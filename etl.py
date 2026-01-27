@@ -8,15 +8,30 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Neon
+# --- ENV ---
 NEON_HOST = os.getenv("NEON_HOST")
 NEON_DB = os.getenv("NEON_DB")
 NEON_USER = os.getenv("NEON_USER")
 NEON_PASSWORD = os.getenv("NEON_PASSWORD")
 
-# Meta
 REPORT_ID = os.getenv("REPORT_ID")
 XLSX_PATH = os.getenv("XLSX_PATH")
+
+# Период отчёта (пока фиксируем как в твоём примере)
+DATE_FROM = date(2026, 1, 1)
+DATE_TO = date(2026, 2, 1)
+
+# --- Excel columns ---
+COL_DEPARTMENT = "Торговое предприятие"
+COL_PRODUCTNUM = "Артикул элемента номенклатуры"
+
+TRANSACTION_COLS = {
+    "Акт приготовления": "PRODUCTION",
+    "Инвентаризация": "INVENTORY_CORRECTION",
+    "Расходная накладная": "OUTGOING_INVOICE",
+    "Реализация товаров": "SESSION_WRITEOFF",
+    "Списание": "WRITEOFF",
+}
 
 
 def sha(s: str) -> str:
@@ -24,12 +39,57 @@ def sha(s: str) -> str:
 
 
 def norm(s: str) -> str:
-    # нормализуем заголовки: лишние пробелы/переводы строк
     return " ".join(str(s).replace("\n", " ").split()).strip()
 
 
-def main():
-    # --- env validation ---
+def to_sku_str(x) -> str:
+    """
+    00001 должен остаться 00001.
+    1.0 -> 00001 (если это чисто число)
+    """
+    if pd.isna(x):
+        return ""
+
+    if isinstance(x, (int, float)):
+        if float(x).is_integer():
+            s = str(int(x))
+        else:
+            s = str(x)
+    else:
+        s = str(x).strip()
+
+    s = s.strip()
+
+    if s.isdigit():
+        return s.zfill(5)
+
+    return s
+
+
+def to_num(x) -> float:
+    """
+    Поддержка русской локали: "53,500" -> 53.5
+    Пусто/NaN -> 0
+    """
+    if pd.isna(x):
+        return 0.0
+    if isinstance(x, (int, float)):
+        return float(x)
+
+    s = str(x).strip()
+    if s == "":
+        return 0.0
+
+    s = s.replace(" ", "").replace("\u00a0", "")
+    s = s.replace(",", ".")
+    try:
+        return float(s)
+    except Exception:
+        return 0.0
+
+
+def require_env():
+    missing = []
     for k, v in {
         "NEON_HOST": NEON_HOST,
         "NEON_DB": NEON_DB,
@@ -39,76 +99,57 @@ def main():
         "XLSX_PATH": XLSX_PATH,
     }.items():
         if not v:
-            raise RuntimeError(f"{k} is missing in .env")
+            missing.append(k)
+    if missing:
+        raise RuntimeError("Missing in .env: " + ", ".join(missing))
 
     if not os.path.exists(XLSX_PATH):
         raise RuntimeError(f"Excel file not found: {XLSX_PATH}")
 
-    print("NEON_HOST =", NEON_HOST)
-    print("NEON_DB   =", NEON_DB)
-    print("NEON_USER =", NEON_USER)
-    print("PWD len   =", len(NEON_PASSWORD))
+
+def main():
+    require_env()
+
     print("XLSX_PATH =", XLSX_PATH)
 
-    # --- period (пока фикс, потом сделаем параметром) ---
-    date_from = date(2026, 1, 1)
-    date_to = date(2026, 2, 1)
-
-    # --- expected columns ---
-    COL_DEPARTMENT = "Торговое предприятие"
-    COL_PRODUCTNUM = "Артикул элемента номенклатуры"
-
-    TRANSACTION_COLS = {
-        "Акт приготовления": "PRODUCTION",
-        "Инвентаризация": "INVENTORY_CORRECTION",
-        "Расходная накладная": "OUTGOING_INVOICE",
-        "Реализация товаров": "SESSION_WRITEOFF",
-        "Списание": "WRITEOFF",
-    }
-
-    # --- read excel ---
     df = pd.read_excel(XLSX_PATH, engine="openpyxl")
-
-    # нормализуем заголовки (иногда Excel приносит лишние пробелы/переносы)
     df.columns = [norm(c) for c in df.columns]
 
-    # проверка наличия нужных колонок
     need = [COL_DEPARTMENT, COL_PRODUCTNUM] + list(TRANSACTION_COLS.keys())
-    missing = [c for c in need if c not in df.columns]
-    if missing:
+    missing_cols = [c for c in need if c not in df.columns]
+    if missing_cols:
         raise RuntimeError(
-            "Missing columns in Excel: " + ", ".join(missing) +
-            "\nAvailable columns: " + ", ".join([str(c) for c in df.columns])
+            "Missing columns in Excel: "
+            + ", ".join(missing_cols)
+            + "\nAvailable columns: "
+            + ", ".join([str(c) for c in df.columns])
         )
 
     rows = []
 
-    # iterrows надёжнее для русских колонок
-    for _, row in df.iterrows():
-        department = str(row[COL_DEPARTMENT]).strip() if pd.notna(row[COL_DEPARTMENT]) else ""
-        product_num = str(row[COL_PRODUCTNUM]).strip() if pd.notna(row[COL_PRODUCTNUM]) else ""
+    # Проходим все строки файла
+    for _, r in df.iterrows():
+        department = str(r[COL_DEPARTMENT]).strip() if pd.notna(r[COL_DEPARTMENT]) else ""
+        product_num = to_sku_str(r[COL_PRODUCTNUM])
 
         if not department or not product_num:
             continue
 
-        for col_name, tr_type in TRANSACTION_COLS.items():
-            v = row[col_name]
-            if pd.isna(v):
-                continue
-
-            amount_out = float(v)
+        # Каждая ненулевая транзакция превращается в отдельную строку
+        for excel_col, tr_type in TRANSACTION_COLS.items():
+            amount_out = to_num(r[excel_col])
             if amount_out == 0:
                 continue
 
             source_hash = sha(
-                f"{REPORT_ID}|{date_from}|{date_to}|{department}|{product_num}|{tr_type}|{amount_out}"
+                f"{REPORT_ID}|{DATE_FROM}|{DATE_TO}|{department}|{product_num}|{tr_type}|{amount_out}"
             )
 
             rows.append(
                 (
                     REPORT_ID,
-                    date_from,
-                    date_to,
+                    DATE_FROM,
+                    DATE_TO,
                     department,
                     product_num,
                     tr_type,
@@ -117,9 +158,12 @@ def main():
                 )
             )
 
-    print(f"Prepared rows: {len(rows)}")
+    print("Prepared rows:", len(rows))
 
-    # --- insert ---
+    if not rows:
+        print("Nothing to insert. Check Excel content / columns / period.")
+        return
+
     with psycopg2.connect(
         host=NEON_HOST,
         dbname=NEON_DB,
