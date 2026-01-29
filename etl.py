@@ -3,7 +3,7 @@ import json
 import hashlib
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, date
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -20,27 +20,22 @@ from psycopg2.extras import execute_values
 
 @dataclass
 class Config:
-    # Neon
     neon_host: str
     neon_db: str
     neon_user: str
     neon_password: str
 
-    # Report
     report_id: str
-    date_from: str  # YYYY-MM-DD
-    date_to: str    # YYYY-MM-DD (верхняя граница, как правило "до", не включая)
+    date_from: str
+    date_to: str
 
-    # iiko
     iiko_base_url: str
     iiko_key: str
     iiko_verify_ssl: bool
 
-    # Filters
-    transaction_types: List[str]      # e.g. PRODUCTION, INVENTORY_CORRECTION...
-    product_types: List[str]          # e.g. GOODS, PREPARED
+    transaction_types: List[str]
+    product_types: List[str]
 
-    # Files
     raw_dir: Path
 
 
@@ -53,22 +48,16 @@ def _env(name: str, default: Optional[str] = None) -> str:
 
 def _env_list(name: str, default: str = "") -> List[str]:
     raw = os.getenv(name, default) or ""
-    # allow comma/semicolon separated
-    parts = [p.strip() for p in raw.replace(";", ",").split(",") if p.strip()]
-    return parts
+    return [p.strip() for p in raw.replace(";", ",").split(",") if p.strip()]
 
 
 def load_config() -> Config:
-    # .env рядом с файлом или в текущей папке
     load_dotenv()
 
     verify_ssl_raw = os.getenv("IIKO_VERIFY_SSL", "1").strip()
     verify_ssl = not (verify_ssl_raw in ("0", "false", "False", "no", "NO"))
 
     raw_dir = Path(os.getenv("RAW_DIR", "src/data/raw")).resolve()
-
-    transaction_types = _env_list("TRANSACTION_TYPES")
-    product_types = _env_list("PRODUCT_TYPES")
 
     cfg = Config(
         neon_host=_env("NEON_HOST"),
@@ -84,8 +73,8 @@ def load_config() -> Config:
         iiko_key=_env("IIKO_KEY"),
         iiko_verify_ssl=verify_ssl,
 
-        transaction_types=transaction_types,
-        product_types=product_types,
+        transaction_types=_env_list("TRANSACTION_TYPES"),
+        product_types=_env_list("PRODUCT_TYPES"),
 
         raw_dir=raw_dir,
     )
@@ -103,28 +92,25 @@ def load_config() -> Config:
 # -----------------------------
 
 def build_olap_request(cfg: Config) -> Dict[str, Any]:
-    """
-    Формируем OLAP v2 TRANSACTIONS: строки (Department, Product.Num, TransactionType)
-    агрегация Amount.Out, фильтры по дате + типам транзакций + типам номенклатуры.
-    """
-    # iiko ждёт datetime с миллисекундами
     dt_from = f"{cfg.date_from}T00:00:00.000"
     dt_to = f"{cfg.date_to}T00:00:00.000"
 
-    body = {
+    return {
         "reportType": "TRANSACTIONS",
         "buildSummary": False,
         "groupByRowFields": [
             "Department",
-            "Product.Num",
+            "DateSecondary.DateTimeTyped",
             "TransactionType",
+            "Product.Num",
+            "Product.Name",
         ],
         "groupByColFields": [],
         "aggregateFields": [
             "Amount.Out",
+            "Sum.Outgoing",
         ],
         "filters": {
-            # В твоём отчёте из iikoOffice фигурирует DateTime.OperDayFilter — его и используем
             "DateTime.OperDayFilter": {
                 "filterType": "DateRange",
                 "periodType": "CUSTOM",
@@ -143,19 +129,14 @@ def build_olap_request(cfg: Config) -> Dict[str, Any]:
             },
         },
     }
-    return body
 
 
 def fetch_olap(cfg: Config, body: Dict[str, Any]) -> Dict[str, Any]:
     url = f"{cfg.iiko_base_url}/resto/api/v2/reports/olap?key={cfg.iiko_key}"
-
     headers = {"Content-Type": "application/json; charset=utf-8"}
     resp = requests.post(url, headers=headers, json=body, verify=cfg.iiko_verify_ssl, timeout=180)
-
-    # дебаг на ошибках
     if resp.status_code != 200:
         raise RuntimeError(f"OLAP request failed: {resp.status_code} {resp.text[:2000]}")
-
     return resp.json()
 
 
@@ -191,76 +172,74 @@ def _has_totals_marker(val: Optional[str]) -> bool:
     return any(m in s for m in TOTAL_MARKERS)
 
 
-def is_total_row(department: Optional[str], product_num: Optional[str], transaction_type: Optional[str]) -> bool:
-    """
-    Режем любые строки, где встречается "всего"/"итого" в любом из полей.
-    Это перекрывает:
-      - "Списание всего" (подитог по типу транзакции)
-      - "Домодедово всего" (подитог по филиалу)
-      - "Итого" (глобальный итог)
-    """
-    return (
-        _has_totals_marker(department)
-        or _has_totals_marker(product_num)
-        or _has_totals_marker(transaction_type)
-    )
+def is_total_row(*vals: Optional[str]) -> bool:
+    return any(_has_totals_marker(v) for v in vals)
 
 
 def normalize_rows(cfg: Config, olap_json: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     data = olap_json.get("data") or []
     out: List[Dict[str, Any]] = []
 
-    skipped = {
-        "missing_department": 0,
-        "missing_product": 0,
-        "missing_tr_type": 0,
+    skipped: Dict[str, int] = {
         "totals_rows": 0,
+        "missing_required": 0,
         "bad_amount": 0,
+        "bad_money": 0,
     }
 
     for r in data:
         dept = r.get("Department")
-        prod = r.get("Product.Num")
+        pdt = r.get("DateSecondary.DateTimeTyped")
         trt = r.get("TransactionType")
-        amt = r.get("Amount.Out")
+        prod_num = r.get("Product.Num")
+        prod_name = r.get("Product.Name")
 
-        # режем итоги
-        if is_total_row(dept, prod, trt):
+        amount_out_raw = r.get("Amount.Out")
+        sum_outgoing_raw = r.get("Sum.Outgoing")
+
+        # режем итоги (в любом поле)
+        if is_total_row(dept, trt, prod_num, prod_name):
             skipped["totals_rows"] += 1
             continue
 
-        # обязательные поля
-        if dept is None or str(dept).strip() == "":
-            skipped["missing_department"] += 1
-            continue
-        if prod is None or str(prod).strip() == "":
-            skipped["missing_product"] += 1
-            continue
-        if trt is None or str(trt).strip() == "":
-            skipped["missing_tr_type"] += 1
+        # обязательные
+        if not dept or not pdt or not trt or not prod_num:
+            skipped["missing_required"] += 1
             continue
 
         # amount
         try:
-            amount_out = float(amt) if amt is not None else 0.0
+            amount_out = float(amount_out_raw) if amount_out_raw is not None else 0.0
         except Exception:
             skipped["bad_amount"] += 1
             continue
 
-        department = str(dept).strip()
-        product_num = str(prod).strip()
-        transaction_type = str(trt).strip()
+        # money
+        try:
+            sum_outgoing = float(sum_outgoing_raw) if sum_outgoing_raw is not None else 0.0
+        except Exception:
+            skipped["bad_money"] += 1
+            continue
 
-        # hash для дедупликации
+        department = str(dept).strip()
+        posting_dt = str(pdt).strip()
+        transaction_type = str(trt).strip()
+        product_num = str(prod_num).strip()
+        product_name = str(prod_name).strip() if prod_name is not None else None
+
         payload = {
             "report_id": cfg.report_id,
             "date_from": cfg.date_from,
             "date_to": cfg.date_to,
             "department": department,
+            "posting_dt": posting_dt,
             "product_num": product_num,
             "transaction_type": transaction_type,
             "amount_out": round(amount_out, 10),
+            "sum_outgoing": round(sum_outgoing, 10),
+            "product_name": product_name,
         }
+
         source_hash = hashlib.sha256(
             json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()
@@ -270,9 +249,12 @@ def normalize_rows(cfg: Config, olap_json: Dict[str, Any]) -> Tuple[List[Dict[st
             "date_from": cfg.date_from,
             "date_to": cfg.date_to,
             "department": department,
+            "posting_dt": posting_dt,
             "product_num": product_num,
+            "product_name": product_name,
             "transaction_type": transaction_type,
             "amount_out": amount_out,
+            "sum_outgoing": sum_outgoing,
             "source_hash": source_hash,
         })
 
@@ -284,8 +266,6 @@ def normalize_rows(cfg: Config, olap_json: Dict[str, Any]) -> Tuple[List[Dict[st
 # -----------------------------
 
 def db_connect(cfg: Config):
-    # Neon любит sslmode=require.
-    # ВАЖНО: никаких options/statement_timeout на подключении к pooled endpoint.
     dsn = (
         f"host={cfg.neon_host} "
         f"dbname={cfg.neon_db} "
@@ -301,10 +281,11 @@ def insert_rows(cfg: Config, rows: List[Dict[str, Any]]) -> int:
         return 0
 
     sql = """
-        INSERT INTO raw.olap_postings
-        (report_id, date_from, date_to, department, product_num, transaction_type, amount_out, source_hash, loaded_at)
-        VALUES %s
-        ON CONFLICT (source_hash) DO NOTHING;
+        insert into raw.olap_postings
+        (report_id, date_from, date_to, department, posting_dt, product_num, product_name, transaction_type,
+         amount_out, sum_outgoing, source_hash, loaded_at)
+        values %s
+        on conflict (source_hash) do nothing;
     """
 
     values = [
@@ -313,19 +294,21 @@ def insert_rows(cfg: Config, rows: List[Dict[str, Any]]) -> int:
             r["date_from"],
             r["date_to"],
             r["department"],
+            r["posting_dt"],
             r["product_num"],
+            r["product_name"],
             r["transaction_type"],
             r["amount_out"],
+            r["sum_outgoing"],
             r["source_hash"],
-            datetime.utcnow(),
+            datetime.now(timezone.utc),
         )
         for r in rows
     ]
 
     with db_connect(cfg) as conn:
         with conn.cursor() as cur:
-            # before
-            cur.execute("SELECT COUNT(*) FROM raw.olap_postings;")
+            cur.execute("select count(*) from raw.olap_postings;")
             before = cur.fetchone()[0]
             print(f"[db] before: {before}")
 
@@ -333,12 +316,11 @@ def insert_rows(cfg: Config, rows: List[Dict[str, Any]]) -> int:
             execute_values(cur, sql, values, page_size=1000)
             conn.commit()
 
-            cur.execute("SELECT COUNT(*) FROM raw.olap_postings;")
+            cur.execute("select count(*) from raw.olap_postings;")
             after = cur.fetchone()[0]
             print(f"[db] after:  {after}")
 
-    inserted = max(0, after - before)
-    return inserted
+    return max(0, after - before)
 
 
 # -----------------------------
@@ -348,7 +330,6 @@ def insert_rows(cfg: Config, rows: List[Dict[str, Any]]) -> int:
 def main():
     cfg = load_config()
 
-    # Если ты работаешь с self-signed/проксируемым https и отключил verify_ssl — подавим warnings
     if not cfg.iiko_verify_ssl:
         try:
             import urllib3
