@@ -104,11 +104,30 @@ def load_config() -> Config:
 # =============================
 
 def get_iiko_key(cfg: Config) -> str:
-    # IMPORTANT: this iiko setup expects SHA1 hash in `pass`, not in `passSha1`
-    url = f"{cfg.iiko_base_url}/resto/api/auth?login={cfg.iiko_login}&pass={cfg.iiko_pass_sha1}"
-    resp = requests.get(url, verify=cfg.iiko_verify_ssl, timeout=30)
+    url = f"{cfg.iiko_base_url}/resto/api/auth"
+
+    login = (cfg.iiko_login or "").strip()
+    sha1 = (cfg.iiko_pass_sha1 or "").strip()
+
+    # нормализуем на случай если где-то uppercase
+    sha1 = sha1.lower()
+
+    # SAFE debug: не палим секрет, но покажем длину и маску
+    if len(sha1) != 40:
+        print(f"[iiko-auth] WARNING: sha1 length is {len(sha1)} (expected 40)")
+    else:
+        print(f"[iiko-auth] sha1 looks ok: len=40, mask={sha1[:4]}...{sha1[-4:]}")
+
+    resp = requests.get(
+        url,
+        params={"login": login, "pass": sha1},  # <-- как твой iwr: pass=$sha1
+        verify=cfg.iiko_verify_ssl,
+        timeout=30,
+    )
+
     if resp.status_code == 200 and resp.text.strip():
         return resp.text.strip()
+
     raise RuntimeError(f"iiko auth failed: {resp.status_code} {resp.text}")
 
 
