@@ -1,0 +1,49 @@
+name: iiko -> Neon ETL (weekly)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  run-etl:
+    runs-on: ubuntu-latest
+
+    env:
+      # Neon
+      NEON_HOST: ${{ secrets.NEON_HOST }}
+      NEON_DB: ${{ secrets.NEON_DB }}
+      NEON_USER: ${{ secrets.NEON_USER }}
+      NEON_PASSWORD: ${{ secrets.NEON_PASSWORD }}
+
+      # Report
+      REPORT_ID: ${{ secrets.REPORT_ID }}
+
+      # iiko auth
+      IIKO_BASE_URL: ${{ secrets.IIKO_BASE_URL }}
+      IIKO_LOGIN: ${{ secrets.IIKO_LOGIN }}
+      IIKO_PASS_SHA1: ${{ secrets.IIKO_PASS_SHA1 }}
+      IIKO_VERIFY_SSL: ${{ secrets.IIKO_VERIFY_SSL }}
+
+      # OLAP filters
+      TRANSACTION_TYPES: ${{ secrets.TRANSACTION_TYPES }}
+      PRODUCT_TYPES: ${{ secrets.PRODUCT_TYPES }}
+
+      # Raw dir on runner
+      RAW_DIR: ${{ secrets.RAW_DIR }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run ETL
+        run: |
+          python etl.py
