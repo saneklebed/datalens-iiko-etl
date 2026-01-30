@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone, date, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-
+from zoneinfo import ZoneInfo
 import requests
 from dotenv import load_dotenv
 
@@ -149,7 +149,7 @@ def build_olap_request(cfg: Config) -> Dict[str, Any]:
         "buildSummary": False,
         "groupByRowFields": [
             "Department",
-            "DateSecondary.DateTimeTyped",
+            "DateTime.Typed",
             "TransactionType",
             "Product.Num",
             "Product.Name",
@@ -236,7 +236,9 @@ def parse_posting_dt(value: Any) -> datetime:
 
     # если вдруг пришло без TZ — принудительно считаем UTC
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+    # iiko обычно отдаёт локальное время точки/учёта без TZ
+    # считаем, что это Москва, чтобы 23:59:59 действительно было концом дня по бизнесу
+    dt = dt.replace(tzinfo=ZoneInfo("Europe/Moscow"))
 
     return dt
 
@@ -262,7 +264,7 @@ def normalize(cfg: Config, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
         # posting_dt: в БД кладём datetime, для хэша используем каноническую строку UTC
         try:
-            posting_dt_dt = parse_posting_dt(r["DateSecondary.DateTimeTyped"])
+            posting_dt_dt = parse_posting_dt(r["DateTime.Typed"])
         except Exception:
             continue
 
