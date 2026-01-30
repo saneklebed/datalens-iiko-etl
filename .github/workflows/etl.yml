@@ -22,7 +22,7 @@ jobs:
       IIKO_LOGIN: ${{ secrets.IIKO_LOGIN }}
       IIKO_PASS_SHA1: ${{ secrets.IIKO_PASS_SHA1 }}
       IIKO_VERIFY_SSL: ${{ secrets.IIKO_VERIFY_SSL }}
-
+      IIKO_PASSWORD: ${{ secrets.IIKO_PASSWORD }}
       # OLAP filters
       TRANSACTION_TYPES: ${{ secrets.TRANSACTION_TYPES }}
       PRODUCT_TYPES: ${{ secrets.PRODUCT_TYPES }}
