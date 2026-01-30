@@ -252,10 +252,10 @@ def normalize(cfg: Config, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
         # числа
         try:
-        amount_out = float(r.get("Amount.Out") or 0)
-        amount_in = float(r.get("Amount.In") or 0)
-        sum_outgoing = float(r.get("Sum.Outgoing") or 0)
-        sum_incoming = float(r.get("Sum.Incoming") or 0)
+            amount_out = float(r.get("Amount.Out") or 0)
+            amount_in = float(r.get("Amount.In") or 0)
+            sum_outgoing = float(r.get("Sum.Outgoing") or 0)
+            sum_incoming = float(r.get("Sum.Incoming") or 0)
         except Exception:
             continue
 
