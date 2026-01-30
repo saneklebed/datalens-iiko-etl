@@ -313,8 +313,8 @@ def insert_rows(cfg: Config, rows: List[Dict[str, Any]]):
     sql = """
     insert into inventory_raw.olap_postings
     (report_id, date_from, date_to, department, posting_dt,
-     product_num, product_name, transaction_type,
-     amount_out, sum_outgoing, source_hash, loaded_at, transaction_type)
+     product_num, product_name, product_category, transaction_type,
+     amount_out, sum_outgoing, source_hash, loaded_at)
     values %s
     on conflict (source_hash) do nothing;
     """
@@ -328,6 +328,7 @@ def insert_rows(cfg: Config, rows: List[Dict[str, Any]]):
             r["posting_dt"],  # datetime object -> timestamptz ок
             r["product_num"],
             r["product_name"],
+            r["product_category"],
             r["transaction_type"],
             r["amount_out"],
             r["sum_outgoing"],
