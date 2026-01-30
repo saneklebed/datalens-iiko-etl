@@ -104,14 +104,30 @@ def load_config() -> Config:
 # =============================
 
 def get_iiko_key(cfg: Config) -> str:
-    url = (
-        f"{cfg.iiko_base_url}/resto/api/auth"
-        f"?login={cfg.iiko_login}&passSha1={cfg.iiko_pass_sha1}"
-    )
-    resp = requests.get(url, verify=cfg.iiko_verify_ssl, timeout=30)
-    if resp.status_code != 200 or not resp.text.strip():
-        raise RuntimeError(f"iiko auth failed: {resp.status_code} {resp.text}")
-    return resp.text.strip()
+    candidates = [
+        ("passSha1", cfg.iiko_pass_sha1),
+        ("pass_sha1", cfg.iiko_pass_sha1),
+        ("passwordSha1", cfg.iiko_pass_sha1),
+        ("pass", cfg.iiko_pass_sha1),
+        ("password", cfg.iiko_pass_sha1),
+    ]
+
+    last_errors = []
+
+    for param, value in candidates:
+        url = (
+            f"{cfg.iiko_base_url}/resto/api/auth"
+            f"?login={cfg.iiko_login}&{param}={value}"
+        )
+        try:
+            resp = requests.get(url, verify=cfg.iiko_verify_ssl, timeout=30)
+            if resp.status_code == 200 and resp.text.strip():
+                return resp.text.strip()
+            last_errors.append(f"{param}: {resp.status_code} {resp.text}")
+        except Exception as e:
+            last_errors.append(f"{param}: exception {e}")
+
+    raise RuntimeError("iiko auth failed. Tried: " + " | ".join(last_errors[:5]))
 
 
 # =============================
