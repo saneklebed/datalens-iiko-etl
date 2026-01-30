@@ -2,7 +2,7 @@ import os
 import json
 import hashlib
 from dataclasses import dataclass
-from datetime import datetime, timezone, date, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
@@ -216,29 +216,21 @@ def is_total(*vals) -> bool:
     return any(v and any(m in str(v).lower() for m in TOTAL_MARKERS) for v in vals)
 
 
-def parse_posting_dt(value: Any) -> datetime:
-    """
-    Превращает значение из iiko в timezone-aware datetime.
-    Поддерживает ISO-строки с 'Z' на конце.
-    """
-    if value is None:
-        raise ValueError("posting_dt is None")
+def parse_posting_dt(raw: str) -> datetime:
+    if not raw:
+        raise ValueError("Empty posting_dt")
 
-    s = str(value).strip()
-    if not s:
-        raise ValueError("posting_dt is empty")
+    s = raw.strip()
 
-    # 'Z' означает UTC, fromisoformat его не принимает
+    # iiko иногда отдаёт Z
     if s.endswith("Z"):
-        s = s[:-1] + "+00:00"
+        s = s.replace("Z", "+00:00")
 
     dt = datetime.fromisoformat(s)
 
-    # если вдруг пришло без TZ — принудительно считаем UTC
+    # если таймзоны нет — считаем, что это локальное время (Москва)
     if dt.tzinfo is None:
-    # iiko обычно отдаёт локальное время точки/учёта без TZ
-    # считаем, что это Москва, чтобы 23:59:59 действительно было концом дня по бизнесу
-    dt = dt.replace(tzinfo=ZoneInfo("Europe/Moscow"))
+        dt = dt.replace(tzinfo=ZoneInfo("Europe/Moscow"))
 
     return dt
 
