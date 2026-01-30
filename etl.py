@@ -104,31 +104,39 @@ def load_config() -> Config:
 # =============================
 
 def get_iiko_key(cfg: Config) -> str:
-    url = f"{cfg.iiko_base_url}/resto/api/auth"
-
+    base = cfg.iiko_base_url.rstrip("/")
     login = (cfg.iiko_login or "").strip()
-    sha1 = (cfg.iiko_pass_sha1 or "").strip()
+    sha1 = (cfg.iiko_pass_sha1 or "").strip().lower()
 
-    # нормализуем на случай если где-то uppercase
-    sha1 = sha1.lower()
+    # Безопасный дебаг (не палим секрет полностью)
+    print(f"[iiko-auth] login={login} sha1_len={len(sha1)} mask={sha1[:4]}...{sha1[-4:]}")
 
-    # SAFE debug: не палим секрет, но покажем длину и маску
-    if len(sha1) != 40:
-        print(f"[iiko-auth] WARNING: sha1 length is {len(sha1)} (expected 40)")
-    else:
-        print(f"[iiko-auth] sha1 looks ok: len=40, mask={sha1[:4]}...{sha1[-4:]}")
+    endpoints = [
+        f"{base}/api/auth",          # как у коллеги
+        f"{base}/resto/api/auth",    # как было у нас
+    ]
 
-    resp = requests.get(
-        url,
-        params={"login": login, "pass": sha1},  # <-- как твой iwr: pass=$sha1
-        verify=cfg.iiko_verify_ssl,
-        timeout=30,
-    )
+    last_err = None
+    for url in endpoints:
+        try:
+            resp = requests.get(
+                url,
+                params={"login": login, "pass": sha1},  # ВАЖНО: pass=SHA1, как твой iwr
+                verify=cfg.iiko_verify_ssl,
+                timeout=30,
+            )
+            if resp.status_code == 200 and resp.text.strip():
+                token = resp.text.strip()
+                print(f"[iiko-auth] ok via {url} token={token[:6]}...")
+                return token
 
-    if resp.status_code == 200 and resp.text.strip():
-        return resp.text.strip()
+            last_err = f"{url}: {resp.status_code} {resp.text}"
+            print(f"[iiko-auth] fail via {last_err}")
+        except Exception as e:
+            last_err = f"{url}: exception {e}"
+            print(f"[iiko-auth] fail via {last_err}")
 
-    raise RuntimeError(f"iiko auth failed: {resp.status_code} {resp.text}")
+    raise RuntimeError(f"iiko auth failed. Last error: {last_err}")
 
 
 # =============================
