@@ -153,6 +153,7 @@ def build_olap_request(cfg: Config) -> Dict[str, Any]:
             "TransactionType",
             "Product.Num",
             "Product.Name",
+            "Product.Category",
         ],
         "groupByColFields": [],
         "aggregateFields": [
@@ -274,6 +275,7 @@ def normalize(cfg: Config, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "transaction_type": str(r["TransactionType"]).strip(),
             "amount_out": amount,
             "sum_outgoing": money,
+            "product_category": str(r.get("Product.Category") or "").strip(),
         }
 
         source_hash = hashlib.sha256(
