@@ -104,33 +104,12 @@ def load_config() -> Config:
 # =============================
 
 def get_iiko_key(cfg: Config) -> str:
-    # 1) пробуем sha1 (как раньше)
-    candidates = [
-        ("passSha1", cfg.iiko_pass_sha1),
-        ("pass_sha1", cfg.iiko_pass_sha1),
-        ("passwordSha1", cfg.iiko_pass_sha1),
-        ("password", cfg.iiko_pass_sha1),
-    ]
-
-    last_errors = []
-
-    for param, value in candidates:
-        url = f"{cfg.iiko_base_url}/resto/api/auth?login={cfg.iiko_login}&{param}={value}"
-        resp = requests.get(url, verify=cfg.iiko_verify_ssl, timeout=30)
-        if resp.status_code == 200 and resp.text.strip():
-            return resp.text.strip()
-        last_errors.append(f"{param}: {resp.status_code} {resp.text}")
-
-    # 2) fallback на обычный пароль, если задан
-    plain = os.getenv("IIKO_PASSWORD", "").strip()
-    if plain:
-        url = f"{cfg.iiko_base_url}/resto/api/auth?login={cfg.iiko_login}&pass={plain}"
-        resp = requests.get(url, verify=cfg.iiko_verify_ssl, timeout=30)
-        if resp.status_code == 200 and resp.text.strip():
-            return resp.text.strip()
-        last_errors.append(f"pass(plain): {resp.status_code} {resp.text}")
-
-    raise RuntimeError("iiko auth failed. Tried: " + " | ".join(last_errors[:6]))
+    # IMPORTANT: this iiko setup expects SHA1 hash in `pass`, not in `passSha1`
+    url = f"{cfg.iiko_base_url}/resto/api/auth?login={cfg.iiko_login}&pass={cfg.iiko_pass_sha1}"
+    resp = requests.get(url, verify=cfg.iiko_verify_ssl, timeout=30)
+    if resp.status_code == 200 and resp.text.strip():
+        return resp.text.strip()
+    raise RuntimeError(f"iiko auth failed: {resp.status_code} {resp.text}")
 
 
 # =============================
