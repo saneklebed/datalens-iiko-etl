@@ -158,7 +158,9 @@ def build_olap_request(cfg: Config) -> Dict[str, Any]:
         "groupByColFields": [],
         "aggregateFields": [
             "Amount.Out",
+            "Amount.In",
             "Sum.Outgoing",
+            "Sum.Incoming",
         ],
         "filters": {
             "DateTime.OperDayFilter": {
@@ -250,8 +252,10 @@ def normalize(cfg: Config, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
         # числа
         try:
-            amount = float(r.get("Amount.Out") or 0)
-            money = float(r.get("Sum.Outgoing") or 0)
+        amount_out = float(r.get("Amount.Out") or 0)
+        amount_in = float(r.get("Amount.In") or 0)
+        sum_outgoing = float(r.get("Sum.Outgoing") or 0)
+        sum_incoming = float(r.get("Sum.Incoming") or 0)
         except Exception:
             continue
 
@@ -274,7 +278,9 @@ def normalize(cfg: Config, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "product_name": str(r.get("Product.Name") or "").strip(),
             "transaction_type": str(r["TransactionType"]).strip(),
             "amount_out": amount,
+            "amount_in": amount_in,
             "sum_outgoing": money,
+            "sum_incoming": sum_incoming,
             "product_category": str(r.get("Product.Category") or "").strip(),
         }
 
