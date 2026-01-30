@@ -277,9 +277,9 @@ def normalize(cfg: Config, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "product_num": str(r["Product.Num"]).strip(),
             "product_name": str(r.get("Product.Name") or "").strip(),
             "transaction_type": str(r["TransactionType"]).strip(),
-            "amount_out": amount,
+            "amount_out": amount_out,
             "amount_in": amount_in,
-            "sum_outgoing": money,
+            "sum_outgoing": sum_outgoing,
             "sum_incoming": sum_incoming,
             "product_category": str(r.get("Product.Category") or "").strip(),
         }
