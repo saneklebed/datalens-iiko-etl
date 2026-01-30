@@ -1,7 +1,6 @@
 import os
 import json
 import hashlib
-import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone, date, timedelta
 from pathlib import Path
@@ -73,7 +72,8 @@ def last_closed_week_tue_to_tue(today: Optional[date] = None) -> Tuple[str, str]
 
 
 def load_config() -> Config:
-    load_dotenv()  # локально не мешает, в Actions env уже есть
+    # локально не мешает, в Actions env уже есть
+    load_dotenv()
 
     date_from, date_to = last_closed_week_tue_to_tue()
 
@@ -121,7 +121,7 @@ def get_iiko_key(cfg: Config) -> str:
         try:
             resp = requests.get(
                 url,
-                params={"login": login, "pass": sha1},  # ВАЖНО: pass=SHA1, как твой iwr
+                params={"login": login, "pass": sha1},  # ВАЖНО: pass=SHA1
                 verify=cfg.iiko_verify_ssl,
                 timeout=30,
             )
@@ -216,8 +216,33 @@ def is_total(*vals) -> bool:
     return any(v and any(m in str(v).lower() for m in TOTAL_MARKERS) for v in vals)
 
 
+def parse_posting_dt(value: Any) -> datetime:
+    """
+    Превращает значение из iiko в timezone-aware datetime.
+    Поддерживает ISO-строки с 'Z' на конце.
+    """
+    if value is None:
+        raise ValueError("posting_dt is None")
+
+    s = str(value).strip()
+    if not s:
+        raise ValueError("posting_dt is empty")
+
+    # 'Z' означает UTC, fromisoformat его не принимает
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+
+    dt = datetime.fromisoformat(s)
+
+    # если вдруг пришло без TZ — принудительно считаем UTC
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    return dt
+
+
 def normalize(cfg: Config, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    rows = []
+    rows: List[Dict[str, Any]] = []
 
     for r in data:
         if is_total(
@@ -228,18 +253,28 @@ def normalize(cfg: Config, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         ):
             continue
 
+        # числа
         try:
             amount = float(r.get("Amount.Out") or 0)
             money = float(r.get("Sum.Outgoing") or 0)
         except Exception:
             continue
 
-        payload = {
+        # posting_dt: в БД кладём datetime, для хэша используем каноническую строку UTC
+        try:
+            posting_dt_dt = parse_posting_dt(r["DateSecondary.DateTimeTyped"])
+        except Exception:
+            continue
+
+        posting_dt_norm = posting_dt_dt.astimezone(timezone.utc).isoformat()
+
+        # payload для хэша (ТОЛЬКО сериализуемые типы)
+        payload_for_hash = {
             "report_id": cfg.report_id,
             "date_from": cfg.date_from,
             "date_to": cfg.date_to,
             "department": str(r["Department"]).strip(),
-            "posting_dt": str(r["DateSecondary.DateTimeTyped"]).strip(),
+            "posting_dt": posting_dt_norm,  # важно: строка
             "product_num": str(r["Product.Num"]).strip(),
             "product_name": str(r.get("Product.Name") or "").strip(),
             "transaction_type": str(r["TransactionType"]).strip(),
@@ -248,10 +283,14 @@ def normalize(cfg: Config, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         }
 
         source_hash = hashlib.sha256(
-            json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
+            json.dumps(payload_for_hash, sort_keys=True, ensure_ascii=False).encode()
         ).hexdigest()
 
+        # payload для БД (posting_dt как datetime)
+        payload = dict(payload_for_hash)
+        payload["posting_dt"] = posting_dt_dt
         payload["source_hash"] = source_hash
+
         rows.append(payload)
 
     return rows
@@ -290,7 +329,7 @@ def insert_rows(cfg: Config, rows: List[Dict[str, Any]]):
             r["date_from"],
             r["date_to"],
             r["department"],
-            r["posting_dt"],
+            r["posting_dt"],  # datetime object -> timestamptz ок
             r["product_num"],
             r["product_name"],
             r["transaction_type"],
@@ -322,7 +361,7 @@ def main():
     rows = normalize(cfg, resp.get("data") or [])
     insert_rows(cfg, rows)
 
-    print(f"[done] rows inserted: {len(rows)}")
+    print(f"[done] rows prepared: {len(rows)} (duplicates skipped by ON CONFLICT)")
 
 
 if __name__ == "__main__":
