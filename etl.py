@@ -321,7 +321,7 @@ def insert_rows(cfg: Config, rows: List[Dict[str, Any]]):
     sql = """
     insert into inventory_raw.olap_postings
     (report_id, date_from, date_to, department, posting_dt,
-     product_num, product_name, product_category, product_measure_unit transaction_type,
+     product_num, product_name, product_category, product_measure_unit, transaction_type,
      amount_out, amount_in, sum_outgoing, sum_incoming, source_hash, loaded_at)
     values %s
     on conflict (source_hash) do nothing;
