@@ -154,6 +154,7 @@ def build_olap_request(cfg: Config) -> Dict[str, Any]:
             "Product.Num",
             "Product.Name",
             "Product.Category",
+            "Product.MeasureUnit",
         ],
         "groupByColFields": [],
         "aggregateFields": [
@@ -282,6 +283,7 @@ def normalize(cfg: Config, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "sum_outgoing": sum_outgoing,
             "sum_incoming": sum_incoming,
             "product_category": str(r.get("Product.Category") or "").strip(),
+            "product_measure_unit": str(r.get("Product.MeasureUnit") or "").strip(),
         }
 
         source_hash = hashlib.sha256(
