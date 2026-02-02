@@ -337,7 +337,7 @@ def insert_rows(cfg: Config, rows: List[Dict[str, Any]]):
             r["product_num"],
             r["product_name"],
             r["product_category"],
-            r["product_measure_unit],
+            r["product_measure_unit"],
             r["transaction_type"],
             r["amount_out"],
             r["amount_in"],
