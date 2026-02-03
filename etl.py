@@ -155,6 +155,7 @@ def build_olap_request(cfg: Config) -> Dict[str, Any]:
             "Product.Name",
             "Product.Category",
             "Product.MeasureUnit",
+            "ContrAccount.Name",
         ],
         "groupByColFields": [],
         "aggregateFields": [
@@ -250,6 +251,12 @@ def normalize(cfg: Config, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             r.get("Product.Name"),
         ):
             continue
+
+        
+                    # ❌ ЖЁСТКО ИСКЛЮЧАЕМ ПОРЧУ ИЗ ДОМЕНА
+        if (r.get("ContrAccount.Name") or "").strip() == "Порча":
+            continue
+
 
         # числа
         try:
