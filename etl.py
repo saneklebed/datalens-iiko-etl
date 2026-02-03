@@ -251,12 +251,10 @@ def normalize(cfg: Config, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             r.get("Product.Name"),
         ):
             continue
-
         
-                    # ❌ ЖЁСТКО ИСКЛЮЧАЕМ ПОРЧУ ИЗ ДОМЕНА
+        # ❌ ЖЁСТКО ИСКЛЮЧАЕМ ПОРЧУ ИЗ ДОМЕНА
         if (r.get("Contr-Account.Name") or "").strip() == "Порча":
             continue
-
 
         # числа
         try:
