@@ -252,10 +252,6 @@ def normalize(cfg: Config, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         ):
             continue
         
-        # ❌ ЖЁСТКО ИСКЛЮЧАЕМ ПОРЧУ ИЗ ДОМЕНА
-        if (r.get("Contr-Account.Name") or "").strip() == "Порча":
-            continue
-
         # числа
         try:
             amount_out = float(r.get("Amount.Out") or 0)
@@ -289,6 +285,7 @@ def normalize(cfg: Config, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "sum_incoming": sum_incoming,
             "product_category": str(r.get("Product.Category") or "").strip(),
             "product_measure_unit": str(r.get("Product.MeasureUnit") or "").strip(),
+            "contr_account_name": str(r.get("Contr-Account.Name") or "").strip(),
         }
 
         source_hash = hashlib.sha256(
@@ -326,7 +323,7 @@ def insert_rows(cfg: Config, rows: List[Dict[str, Any]]):
     sql = """
     insert into inventory_raw.olap_postings
     (report_id, date_from, date_to, department, posting_dt,
-     product_num, product_name, product_category, product_measure_unit, transaction_type,
+     product_num, product_name, product_category, product_measure_unit, contr_account_name, transaction_type,
      amount_out, amount_in, sum_outgoing, sum_incoming, source_hash, loaded_at)
     values %s
     on conflict (source_hash) do nothing;
@@ -343,6 +340,7 @@ def insert_rows(cfg: Config, rows: List[Dict[str, Any]]):
             r["product_name"],
             r["product_category"],
             r["product_measure_unit"],
+            r["contr_account_name"],
             r["transaction_type"],
             r["amount_out"],
             r["amount_in"],
