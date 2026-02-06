@@ -1,13 +1,23 @@
 name: iiko -> Neon ETL (weekly)
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      date_from:
+        description: 'Период: с (YYYY-MM-DD). Оставь пустым для авто-недели'
+        required: false
+      date_to:
+        description: 'Период: по, не включая этот день (YYYY-MM-DD)'
+        required: false
 
 jobs:
   run-etl:
     runs-on: ubuntu-latest
 
     env:
+      # Опциональный период (если оба заданы при ручном запуске)
+      DATE_FROM: ${{ inputs.date_from }}
+      DATE_TO: ${{ inputs.date_to }}
       # Neon
       NEON_HOST: ${{ secrets.NEON_HOST }}
       NEON_DB: ${{ secrets.NEON_DB }}

@@ -71,11 +71,31 @@ def last_closed_week_tue_to_tue(today: Optional[date] = None) -> Tuple[str, str]
     return start.isoformat(), end.isoformat()
 
 
+def _parse_optional_date(name: str) -> Optional[str]:
+    """Читает опциональную дату из env в формате YYYY-MM-DD."""
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return None
+    try:
+        datetime.strptime(raw, "%Y-%m-%d")
+        return raw
+    except ValueError:
+        raise RuntimeError(f"Env {name} must be YYYY-MM-DD, got: {raw!r}")
+
+
 def load_config() -> Config:
     # локально не мешает, в Actions env уже есть
     load_dotenv()
 
-    date_from, date_to = last_closed_week_tue_to_tue()
+    # Произвольный период: если заданы DATE_FROM и DATE_TO — используем их
+    date_from_env = _parse_optional_date("DATE_FROM")
+    date_to_env = _parse_optional_date("DATE_TO")
+    if date_from_env is not None and date_to_env is not None:
+        date_from, date_to = date_from_env, date_to_env
+    elif date_from_env is not None or date_to_env is not None:
+        raise RuntimeError("Set both DATE_FROM and DATE_TO for custom period, or leave both unset for auto week.")
+    else:
+        date_from, date_to = last_closed_week_tue_to_tue()
 
     return Config(
         neon_host=_env("NEON_HOST"),

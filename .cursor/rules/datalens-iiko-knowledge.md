@@ -1,0 +1,155 @@
+# База знаний: DataLens и iiko API
+
+Этот файл содержит ключевую информацию о работе с DataLens и iiko API для быстрого доступа при разработке.
+
+## DataLens — ключевая информация
+
+### Сортировка в таблицах (практика проекта)
+
+**Что не работает:**
+- Сводная таблица + сортировка по measure
+- RANK / is_in_top_n — ломали логику в нашем кейсе
+
+**Что сработало (стабильно):**
+- **Обычная таблица** (НЕ сводная)
+- Поле «Можем терять в месяц» добавлено **в строки**
+- Использовано как **поле сортировки** (по убыванию)
+- **Отображаемый столбец — дубликат** (справа), чтобы и сортировка работала, и значение было видно
+- Итог: сортировка по убыванию работает стабильно
+
+**Другие варианты (из доки):**
+
+1. Секция «Сортировка» в визарде: добавить поле, задать направление (↑/↓).
+2. Multi-column: выключить пагинацию, Ctrl + клик по заголовкам.
+3. ORDER BY в оконных функциях — приоритет над сортировкой чарта.
+4. RANK — ранжировать, потом сортировать по рангу.
+5. Сортировка на уровне Neon (ORDER BY в витрине) — если в DataLens упорно не держится.
+
+### Агрегация и «дробление» строк (практика проекта)
+
+- **Проблема:** без выбора филиала MONEY-таблица показывала две строки по товару, QTY — одну. Причина: в MONEY-датасете меры не были явно агрегированы, DataLens оставлял строки по департаментам.
+- **Решение:** в датасете MONEY созданы жёстко агрегированные меры: `SUM([movement_money])`, `SUM([deviation_money_signed])`, `SUM([excess_loss_money])`, `SUM([potential_loss_month])`. В чартах использовать **только эти _sum поля**. MONEY и QTY тогда ведут себя одинаково (1 строка без филиала, несколько — с филиалом).
+- **Правило:** агрегацию лучше фиксировать на уровне датасета, не чарта. Если DataLens «дробит» строки — почти всегда проблема агрегации.
+
+### Ограничения и особенности
+
+- **Нельзя смешивать агрегированные и неагрегированные поля** в одном выражении — ошибка `ERR.DS_API.FORMULA.VALIDATION.AGG.INCONSISTENT`
+- **LOD-выражения (FIXED, INCLUDE, EXCLUDE):** переопределяют группировку для конкретной агрегатной функции
+- **BEFORE FILTER BY:** агрегация до применения фильтров
+
+### Полезные ссылки
+
+- [Документация DataLens](https://datalens.tech/docs/ru/)
+- [Таблица в DataLens](https://datalens.tech/docs/ru/visualization-ref/table-chart)
+- [Агрегации в DataLens](https://datalens.tech/docs/ru/concepts/aggregation-tutorial)
+- [LOD-выражения](https://datalens.tech/docs/ru/concepts/lod-aggregation)
+- [Оконные функции](https://datalens.tech/docs/ru/concepts/window-function-tutorial)
+
+## iiko API — ключевая информация
+
+### OLAP API v2
+
+**Официальная документация:** https://api-ru.iiko.services/docs
+
+### Структура запроса OLAP (reportType: TRANSACTIONS)
+
+```json
+{
+  "reportType": "TRANSACTIONS",
+  "buildSummary": false,
+  "groupByRowFields": [
+    "Department",
+    "DateTime.Typed",
+    "TransactionType",
+    "Product.Num",
+    "Product.Name",
+    "Product.Category",
+    "Product.MeasureUnit",
+    "Contr-Account.Name"
+  ],
+  "groupByColFields": [],
+  "aggregateFields": [
+    "Amount.Out",
+    "Amount.In",
+    "Sum.Outgoing",
+    "Sum.Incoming"
+  ],
+  "filters": {
+    "DateTime.OperDayFilter": {
+      "filterType": "DateRange",
+      "periodType": "CUSTOM",
+      "from": "2024-01-01T00:00:00.000",
+      "to": "2024-01-08T00:00:00.000",
+      "includeLow": true,
+      "includeHigh": false
+    },
+    "TransactionType": {
+      "filterType": "IncludeValues",
+      "values": ["тип1", "тип2"]
+    },
+    "Product.Type": {
+      "filterType": "IncludeValues",
+      "values": ["тип1", "тип2"]
+    }
+  }
+}
+```
+
+### Аутентификация
+
+**Эндпоинты для получения ключа:**
+- `/api/auth` (новый формат)
+- `/resto/api/auth` (старый формат)
+
+**Параметры:**
+- `login` — логин
+- `pass` — SHA1 хэш пароля (ВАЖНО: передавать SHA1, а не пароль)
+
+**Использование ключа:**
+- Ключ передается как query-параметр `key` в запросах к OLAP API
+- Пример: `/resto/api/v2/reports/olap?key={token}`
+
+### Поля в ответе OLAP
+
+**Основные поля:**
+- `Department` — отдел/филиал
+- `DateTime.Typed` — дата и время проводки
+- `TransactionType` — тип транзакции
+- `Product.Num` — номер продукта
+- `Product.Name` — название продукта
+- `Product.Category` — категория продукта
+- `Product.MeasureUnit` — единица измерения
+- `Contr-Account.Name` — название контрагента
+- `Amount.Out` — количество расхода
+- `Amount.In` — количество прихода
+- `Sum.Outgoing` — сумма расхода
+- `Sum.Incoming` — сумма прихода
+
+### Особенности обработки данных
+
+- **Таймзоны:** iiko может отдавать время с `Z` в конце (UTC) или без таймзоны
+- **Итоговые строки:** могут содержать маркеры "Итого", "Всего" — их нужно фильтровать
+- **Дубликаты:** защита через `source_hash` на стороне БД (ON CONFLICT DO NOTHING)
+
+### Полезные ссылки
+
+- [Официальная документация iiko API](https://api-ru.iiko.services/docs)
+- [OLAP-отчеты v2 (ru.iiko.help)](http://ru.iiko.help/articles/#!api-documentations/prednastroennye-olap-otchety-vv2)
+- [Практическое руководство по OLAP](https://open-s.info/blog/olap_instruktsiya/)
+
+## Рекомендации для работы
+
+### При проблемах с сортировкой в DataLens
+
+1. Проверить, что поле является показателем (агрегатом), а не измерением
+2. Попробовать добавить поле в секцию "Сортировка" в визарде
+3. Если не помогает — использовать ORDER BY в SQL-витрине в Neon
+4. Как альтернатива — использовать RANK для ранжирования и сортировать по рангу
+
+### При работе с iiko API
+
+1. Всегда проверять оба эндпоинта аутентификации (`/api/auth` и `/resto/api/auth`)
+2. Использовать SHA1 хэш пароля, а не сам пароль
+3. Обрабатывать таймзоны корректно (нормализовать в UTC для БД)
+4. Фильтровать итоговые строки на этапе нормализации
+5. Использовать `source_hash` для защиты от дублей
