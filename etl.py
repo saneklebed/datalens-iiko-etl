@@ -280,6 +280,20 @@ def db_connect(cfg: Config):
     )
 
 
+def delete_period(cfg: Config) -> int:
+    """Удаляет из RAW все строки за период (report_id, date_from, date_to). Возвращает число удалённых строк."""
+    sql = """
+    delete from inventory_raw.olap_postings
+    where report_id = %s and date_from = %s and date_to = %s;
+    """
+    with db_connect(cfg) as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (cfg.report_id, cfg.date_from, cfg.date_to))
+            deleted = cur.rowcount
+            conn.commit()
+    return deleted
+
+
 def insert_rows(cfg: Config, rows: List[Dict[str, Any]]):
     if not rows:
         return
@@ -324,6 +338,9 @@ def main():
     resp = fetch_olap(cfg, body)
 
     rows = normalize(cfg, resp.get("data") or [])
+    deleted = delete_period(cfg)
+    if deleted:
+        print(f"[period] перезапись: удалено строк за период: {deleted}")
     insert_rows(cfg, rows)
 
     print(f"[done] rows inserted: {len(rows)}")
