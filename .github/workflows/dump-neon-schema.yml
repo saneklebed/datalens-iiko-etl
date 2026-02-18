@@ -26,8 +26,8 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install psycopg2
-        run: pip install psycopg2-binary
+      - name: Install dependencies
+        run: pip install psycopg2-binary python-dotenv
 
       - name: Dump Neon schema
         run: python scripts/dump_neon_schema.py
