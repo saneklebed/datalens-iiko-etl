@@ -60,6 +60,8 @@ GitHub Actions workflow для автоматического запуска:
 
 ## Структура данных в Neon (Postgres)
 
+Полный список таблиц и колонок (для контекста и запросов): **`docs/neon-tables.md`**. Обновить: `python scripts/dump_neon_schema.py` из корня (нужен `.env` с NEON_*).
+
 ### 1. RAW — `inventory_raw.olap_postings`
 - Все проводки iiko. Типы транзакций: WRITEOFF, PRODUCTION, OUTGOING_INVOICE, SESSION_WRITEOFF, INVENTORY_CORRECTION, **INVOICE** (приход).
 - Защита от дублей: `source_hash` (ON CONFLICT DO NOTHING).
