@@ -1,5 +1,6 @@
-# Ручной запуск: выгружает структуру таблиц Neon в docs/neon-tables.md
-# используя секреты (NEON_*). Если файл изменился — коммитит и пушит.
+# Ручной запуск: выгружает структуру и DDL схем Neon в docs/
+# (neon-tables.md — таблицы/колонки, neon-schema.sql — полный код: CREATE TABLE/VIEW и т.д.)
+# Использует секреты NEON_*. Если файлы изменились — коммитит и пушит.
 name: Dump Neon schema
 
 on:
@@ -9,7 +10,7 @@ jobs:
   dump-schema:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # чтобы пушить коммит обратно
+      contents: write
 
     env:
       NEON_HOST: ${{ secrets.NEON_HOST }}
@@ -26,20 +27,26 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Install Python deps
         run: pip install psycopg2-binary python-dotenv
 
-      - name: Dump Neon schema
+      - name: Dump Neon tables (markdown)
         run: python scripts/dump_neon_schema.py
+
+      - name: Dump Neon DDL (full schema SQL)
+        run: python scripts/dump_neon_ddl.py
 
       - name: Commit and push if changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/neon-tables.md
+          git add docs/neon-tables.md docs/neon-schema.sql
           if git diff --staged --quiet; then
             echo "Схема не изменилась, коммит не нужен"
           else
-            git commit -m "docs: update Neon schema (dump-neon-schema workflow)"
+            git commit -m "docs: update Neon schema and DDL (dump-neon-schema workflow)"
             git push
           fi

@@ -60,7 +60,7 @@ DataLens (дашборды)
 
 **Принцип:** Core — логика. Mart — формат. DataLens — визуал. Нельзя тащить бизнес-логику в BI и ломать core ради визуала.
 
-**Структура таблиц Neon:** полный список схем, таблиц и колонок — в **`docs/neon-tables.md`**. При вопросах по данным, запросам и полям читать этот файл. Обновить схему: из корня проекта запустить `python scripts/dump_neon_schema.py` (нужен `.env` с NEON_*).
+**Структура и DDL Neon:** список таблиц/колонок — **`docs/neon-tables.md`**; полный код схем (CREATE TABLE/VIEW, функции) — **`docs/neon-schema.sql`**. При правках объектов в Neon опираться на эти файлы. Обновить: запустить workflow **Dump Neon schema** в GitHub Actions (выгружает оба файла) или локально `python scripts/dump_neon_schema.py` и `python scripts/dump_neon_ddl.py` (для DDL нужен pg_dump в PATH).
 
 ---
 
