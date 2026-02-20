@@ -222,6 +222,14 @@ CREATE TABLE inventory_core.weekly_product_documents_products (
     money_signed numeric
 );
 
+CREATE TABLE inventory_core.weekly_wrong_receipt_mirror_products (
+    week_start date,
+    week_end date,
+    department text,
+    product_num text,
+    is_wrong_receipt_mirror boolean
+);
+
 CREATE TABLE inventory_mart.sandbox_inventory_products (
     week_start date,
     week_end date,
@@ -245,6 +253,7 @@ CREATE TABLE inventory_mart.sandbox_inventory_products (
     is_wrong_prev_inventory boolean,
     prev_deviation_qty_signed numeric,
     is_missing_inventory_position boolean,
+    is_wrong_receipt_mirror boolean,
     qty_movement_qty numeric,
     qty_movement_money numeric,
     deviation_qty_signed numeric,
@@ -283,7 +292,8 @@ CREATE TABLE inventory_mart.weekly_deviation_products_money_v2 (
     movement_qty numeric,
     is_wrong_prev_inventory boolean,
     prev_deviation_qty_signed numeric,
-    is_missing_inventory_position boolean
+    is_missing_inventory_position boolean,
+    is_wrong_receipt_mirror boolean
 );
 
 CREATE TABLE inventory_mart.weekly_deviation_products_qty (
@@ -314,7 +324,8 @@ CREATE TABLE inventory_mart.weekly_deviation_products_qty (
     potential_loss_week numeric,
     potential_loss_month numeric,
     is_wrong_prev_inventory boolean,
-    prev_deviation_qty_signed numeric
+    prev_deviation_qty_signed numeric,
+    is_wrong_receipt_mirror boolean
 );
 
 CREATE TABLE inventory_mart.weekly_product_documents_products (
@@ -896,6 +907,37 @@ CREATE VIEW inventory_core.weekly_product_documents_products AS
    FROM wk
 ;
 
+CREATE VIEW inventory_core.weekly_wrong_receipt_mirror_products AS
+ WITH mirror_pairs AS (
+         SELECT a.week_start,
+            a.week_end,
+            a.product_num,
+            a.department AS department_a,
+            b.department AS department_b
+           FROM inventory_core.inventory_correction_clean_products a
+             JOIN inventory_core.inventory_correction_clean_products b ON a.week_start = b.week_start AND a.week_end = b.week_end AND a.product_num = b.product_num AND a.department < b.department
+          WHERE sign(COALESCE(a.deviation_qty_signed, 0::numeric)) = (- sign(COALESCE(b.deviation_qty_signed, 0::numeric))) AND sign(COALESCE(a.deviation_qty_signed, 0::numeric)) <> 0::numeric AND abs(COALESCE(a.deviation_qty_signed, 0::numeric)) >= 0.001 AND abs(COALESCE(b.deviation_qty_signed, 0::numeric)) >= 0.001 AND (abs(abs(COALESCE(a.deviation_qty_signed, 0::numeric)) - abs(COALESCE(b.deviation_qty_signed, 0::numeric))) / NULLIF(GREATEST(abs(COALESCE(a.deviation_qty_signed, 0::numeric)), abs(COALESCE(b.deviation_qty_signed, 0::numeric))), 0::numeric)) <= 0.20
+        ), marked AS (
+         SELECT mirror_pairs.week_start,
+            mirror_pairs.week_end,
+            mirror_pairs.department_a AS department,
+            mirror_pairs.product_num
+           FROM mirror_pairs
+        UNION
+         SELECT mirror_pairs.week_start,
+            mirror_pairs.week_end,
+            mirror_pairs.department_b,
+            mirror_pairs.product_num
+           FROM mirror_pairs
+        )
+ SELECT week_start,
+    week_end,
+    department,
+    product_num,
+    true AS is_wrong_receipt_mirror
+   FROM marked
+;
+
 CREATE VIEW inventory_mart.sandbox_inventory_products AS
  SELECT COALESCE(m.week_start, q.week_start) AS week_start,
     COALESCE(m.week_end, q.week_end) AS week_end,
@@ -919,6 +961,7 @@ CREATE VIEW inventory_mart.sandbox_inventory_products AS
     m.is_wrong_prev_inventory,
     m.prev_deviation_qty_signed,
     m.is_missing_inventory_position,
+    COALESCE(m.is_wrong_receipt_mirror, q.is_wrong_receipt_mirror) AS is_wrong_receipt_mirror,
     q.movement_qty AS qty_movement_qty,
     q.movement_money AS qty_movement_money,
     q.deviation_qty_signed,
@@ -1031,10 +1074,12 @@ CREATE VIEW inventory_mart.weekly_deviation_products_money_v2 AS
     b.movement_qty,
     COALESCE(q.is_wrong_prev_inventory, false) AS is_wrong_prev_inventory,
     COALESCE(q.prev_deviation_qty_signed, 0::numeric) AS prev_deviation_qty_signed,
-    COALESCE(mi.is_missing_inventory_position, false) AS is_missing_inventory_position
+    COALESCE(mi.is_missing_inventory_position, false) AS is_missing_inventory_position,
+    COALESCE(wr.is_wrong_receipt_mirror, false) AS is_wrong_receipt_mirror
    FROM base b
      LEFT JOIN qc_prev q ON q.week_start = b.week_start AND q.week_end = b.week_end AND q.department = b.department AND q.product_num = b.product_num
      LEFT JOIN inventory_core.weekly_missing_inventory_positions_products mi ON mi.week_start = b.week_start AND mi.week_end = b.week_end AND mi.department = b.department AND mi.product_num = b.product_num
+     LEFT JOIN inventory_core.weekly_wrong_receipt_mirror_products wr ON wr.week_start = b.week_start AND wr.week_end = b.week_end AND wr.department = b.department AND wr.product_num = b.product_num
 ;
 
 CREATE VIEW inventory_mart.weekly_deviation_products_qty AS
@@ -1130,11 +1175,13 @@ CREATE VIEW inventory_mart.weekly_deviation_products_qty AS
             ELSE GREATEST(0::numeric, COALESCE(c.shortage_money, 0::numeric) - COALESCE(m.movement_money, 0::numeric) * COALESCE(n.norm_pct, 0.02)) * 4::numeric
         END AS potential_loss_month,
     COALESCE(qc.is_wrong_prev_inventory, false) AS is_wrong_prev_inventory,
-    qc.prev_deviation_qty_signed
+    qc.prev_deviation_qty_signed,
+    COALESCE(wr.is_wrong_receipt_mirror, false) AS is_wrong_receipt_mirror
    FROM m
      FULL JOIN c ON m.week_start = c.week_start AND m.week_end = c.week_end AND m.department = c.department AND m.product_num = c.product_num
      LEFT JOIN n ON n.department = COALESCE(m.department, c.department) AND n.product_num = COALESCE(m.product_num, c.product_num)
      LEFT JOIN qc ON qc.week_start = COALESCE(m.week_start, c.week_start) AND qc.department = COALESCE(m.department, c.department) AND qc.product_num = COALESCE(m.product_num, c.product_num)
+     LEFT JOIN inventory_core.weekly_wrong_receipt_mirror_products wr ON wr.week_start = COALESCE(m.week_start, c.week_start) AND wr.week_end = COALESCE(m.week_end, c.week_end) AND wr.department = COALESCE(m.department, c.department) AND wr.product_num = COALESCE(m.product_num, c.product_num)
 ;
 
 CREATE VIEW inventory_mart.weekly_product_documents_products AS

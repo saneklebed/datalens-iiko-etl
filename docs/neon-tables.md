@@ -273,6 +273,17 @@
 | money_signed | numeric | YES |
 
 
+### weekly_wrong_receipt_mirror_products
+
+| Колонка | Тип | NULL |
+|---------|-----|------|
+| week_start | date | YES |
+| week_end | date | YES |
+| department | text | YES |
+| product_num | text | YES |
+| is_wrong_receipt_mirror | boolean | YES |
+
+
 ## inventory_mart
 
 ### sandbox_inventory_products
@@ -301,6 +312,7 @@
 | is_wrong_prev_inventory | boolean | YES |
 | prev_deviation_qty_signed | numeric | YES |
 | is_missing_inventory_position | boolean | YES |
+| is_wrong_receipt_mirror | boolean | YES |
 | qty_movement_qty | numeric | YES |
 | qty_movement_money | numeric | YES |
 | deviation_qty_signed | numeric | YES |
@@ -343,6 +355,7 @@
 | is_wrong_prev_inventory | boolean | YES |
 | prev_deviation_qty_signed | numeric | YES |
 | is_missing_inventory_position | boolean | YES |
+| is_wrong_receipt_mirror | boolean | YES |
 
 
 ### weekly_deviation_products_qty
@@ -377,6 +390,7 @@
 | potential_loss_month | numeric | YES |
 | is_wrong_prev_inventory | boolean | YES |
 | prev_deviation_qty_signed | numeric | YES |
+| is_wrong_receipt_mirror | boolean | YES |
 
 
 ### weekly_product_documents_products
