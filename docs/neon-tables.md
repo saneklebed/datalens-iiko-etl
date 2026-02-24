@@ -83,6 +83,14 @@
 | products_cnt | bigint | YES |
 
 
+### resort_product_pairs
+
+| Колонка | Тип | NULL |
+|---------|-----|------|
+| product_num_1 | text | NO |
+| product_num_2 | text | NO |
+
+
 ### transactions
 
 | Колонка | Тип | NULL |
@@ -238,6 +246,17 @@
 | movement_money | numeric | YES |
 
 
+### weekly_possible_resort_products
+
+| Колонка | Тип | NULL |
+|---------|-----|------|
+| week_start | date | YES |
+| week_end | date | YES |
+| department | text | YES |
+| product_num | text | YES |
+| is_possible_resort | boolean | YES |
+
+
 ### weekly_prev_miscount_last_week_products
 
 | Колонка | Тип | NULL |
@@ -273,6 +292,29 @@
 | money_signed | numeric | YES |
 
 
+### weekly_receipt_products
+
+| Колонка | Тип | NULL |
+|---------|-----|------|
+| week_start | date | YES |
+| week_end | date | YES |
+| department | text | YES |
+| product_num | text | YES |
+| receipt_qty | numeric | YES |
+
+
+### weekly_suspicious_receipt_vs_shortage
+
+| Колонка | Тип | NULL |
+|---------|-----|------|
+| week_start | date | YES |
+| week_end | date | YES |
+| department | text | YES |
+| product_num | text | YES |
+| shortage_qty_signed | numeric | YES |
+| receipt_qty | numeric | YES |
+
+
 ### weekly_wrong_receipt_mirror_products
 
 | Колонка | Тип | NULL |
@@ -282,6 +324,18 @@
 | department | text | YES |
 | product_num | text | YES |
 | is_wrong_receipt_mirror | boolean | YES |
+
+
+### weekly_wrong_receipt_type_products
+
+| Колонка | Тип | NULL |
+|---------|-----|------|
+| week_start | date | YES |
+| week_end | date | YES |
+| department | text | YES |
+| product_num | text | YES |
+| is_suspicious_receipt_vs_shortage | boolean | YES |
+| wrong_receipt_type | text | YES |
 
 
 ## inventory_mart
@@ -313,6 +367,10 @@
 | prev_deviation_qty_signed | numeric | YES |
 | is_missing_inventory_position | boolean | YES |
 | is_wrong_receipt_mirror | boolean | YES |
+| is_suspicious_receipt_vs_shortage | boolean | YES |
+| wrong_receipt_type | text | YES |
+| wrong_receipt_reason | text | YES |
+| is_possible_resort | boolean | YES |
 | qty_movement_qty | numeric | YES |
 | qty_movement_money | numeric | YES |
 | deviation_qty_signed | numeric | YES |
@@ -356,6 +414,10 @@
 | prev_deviation_qty_signed | numeric | YES |
 | is_missing_inventory_position | boolean | YES |
 | is_wrong_receipt_mirror | boolean | YES |
+| is_suspicious_receipt_vs_shortage | boolean | YES |
+| wrong_receipt_type | text | YES |
+| wrong_receipt_reason | text | YES |
+| is_possible_resort | boolean | YES |
 
 
 ### weekly_deviation_products_qty
@@ -391,6 +453,10 @@
 | is_wrong_prev_inventory | boolean | YES |
 | prev_deviation_qty_signed | numeric | YES |
 | is_wrong_receipt_mirror | boolean | YES |
+| is_suspicious_receipt_vs_shortage | boolean | YES |
+| wrong_receipt_type | text | YES |
+| wrong_receipt_reason | text | YES |
+| is_possible_resort | boolean | YES |
 
 
 ### weekly_product_documents_products
