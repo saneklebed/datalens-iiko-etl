@@ -44,6 +44,7 @@ jobs:
           if git diff --staged --quiet; then
             echo "Схема не изменилась, коммит не нужен"
           else
+            git status
             git commit -m "docs: update Neon schema and DDL (dump-neon-schema workflow)"
             git push
           fi
