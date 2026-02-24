@@ -293,7 +293,11 @@ CREATE TABLE inventory_mart.weekly_deviation_products_money_v2 (
     is_wrong_prev_inventory boolean,
     prev_deviation_qty_signed numeric,
     is_missing_inventory_position boolean,
-    is_wrong_receipt_mirror boolean
+    is_wrong_receipt_mirror boolean,
+    is_suspicious_receipt_vs_shortage boolean,
+    wrong_receipt_type text,
+    wrong_receipt_reason text,
+    is_possible_resort boolean
 );
 
 CREATE TABLE inventory_mart.weekly_deviation_products_qty (

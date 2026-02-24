@@ -70,6 +70,7 @@ GitHub Actions workflow для автоматического запуска:
 - `transactions` / `transactions_products` — нормализованная лента, SIGNED-логика.
 - `weekly_movement_products` — движение по товарам (базовая витрина).
 - `inventory_correction_clean_products` — ОЧИЩЕННАЯ инвентаризация (только итоговая).
+- Флаги пересорта и др.: в витрине **`inventory_mart.weekly_deviation_products_money_v2`** в Neon — поле **`is_possible_resort`** (и при необходимости `is_wrong_receipt_mirror`, `wrong_receipt_type`, `wrong_receipt_reason`). Дашборд «Пересорт товаров» в DataLens фильтрует по **is_possible_resort** из этого источника. Логику пересорта (в т.ч. добавление пар товаров типа «Говядина мякоть» / «Говядина лопатка (для персонала)») менять в этой витрине или в её источниках в Neon, не в core view `weekly_wrong_receipt_mirror_products`.
 - Флаги: «неверно посчитано в прошлой инвентаризации», несохранённые позиции (есть движение, нет INVENTORY_CORRECTION).
 
 ### 3. MART — `inventory_mart.*` (витрины под DataLens)

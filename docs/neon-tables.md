@@ -356,6 +356,10 @@
 | prev_deviation_qty_signed | numeric | YES |
 | is_missing_inventory_position | boolean | YES |
 | is_wrong_receipt_mirror | boolean | YES |
+| is_suspicious_receipt_vs_shortage | boolean | YES |
+| wrong_receipt_type | text | YES |
+| wrong_receipt_reason | text | YES |
+| is_possible_resort | boolean | YES |
 
 
 ### weekly_deviation_products_qty
