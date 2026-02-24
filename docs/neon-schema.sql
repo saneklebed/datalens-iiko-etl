@@ -65,6 +65,11 @@ CREATE TABLE inventory_core.raw_inventory_products_count (
     products_cnt bigint
 );
 
+CREATE TABLE inventory_core.resort_product_pairs (
+    product_num_1 text NOT NULL,
+    product_num_2 text NOT NULL
+);
+
 CREATE TABLE inventory_core.transactions (
     report_id text,
     date_from date,
@@ -193,6 +198,14 @@ CREATE TABLE inventory_core.weekly_movement_products (
     movement_money numeric
 );
 
+CREATE TABLE inventory_core.weekly_possible_resort_products (
+    week_start date,
+    week_end date,
+    department text,
+    product_num text,
+    is_possible_resort boolean
+);
+
 CREATE TABLE inventory_core.weekly_prev_miscount_last_week_products (
     prev_week date,
     week_start date,
@@ -222,12 +235,38 @@ CREATE TABLE inventory_core.weekly_product_documents_products (
     money_signed numeric
 );
 
+CREATE TABLE inventory_core.weekly_receipt_products (
+    week_start date,
+    week_end date,
+    department text,
+    product_num text,
+    receipt_qty numeric
+);
+
+CREATE TABLE inventory_core.weekly_suspicious_receipt_vs_shortage (
+    week_start date,
+    week_end date,
+    department text,
+    product_num text,
+    shortage_qty_signed numeric,
+    receipt_qty numeric
+);
+
 CREATE TABLE inventory_core.weekly_wrong_receipt_mirror_products (
     week_start date,
     week_end date,
     department text,
     product_num text,
     is_wrong_receipt_mirror boolean
+);
+
+CREATE TABLE inventory_core.weekly_wrong_receipt_type_products (
+    week_start date,
+    week_end date,
+    department text,
+    product_num text,
+    is_suspicious_receipt_vs_shortage boolean,
+    wrong_receipt_type text
 );
 
 CREATE TABLE inventory_mart.sandbox_inventory_products (
@@ -254,6 +293,10 @@ CREATE TABLE inventory_mart.sandbox_inventory_products (
     prev_deviation_qty_signed numeric,
     is_missing_inventory_position boolean,
     is_wrong_receipt_mirror boolean,
+    is_suspicious_receipt_vs_shortage boolean,
+    wrong_receipt_type text,
+    wrong_receipt_reason text,
+    is_possible_resort boolean,
     qty_movement_qty numeric,
     qty_movement_money numeric,
     deviation_qty_signed numeric,
@@ -329,7 +372,11 @@ CREATE TABLE inventory_mart.weekly_deviation_products_qty (
     potential_loss_month numeric,
     is_wrong_prev_inventory boolean,
     prev_deviation_qty_signed numeric,
-    is_wrong_receipt_mirror boolean
+    is_wrong_receipt_mirror boolean,
+    is_suspicious_receipt_vs_shortage boolean,
+    wrong_receipt_type text,
+    wrong_receipt_reason text,
+    is_possible_resort boolean
 );
 
 CREATE TABLE inventory_mart.weekly_product_documents_products (
@@ -816,6 +863,40 @@ CREATE VIEW inventory_core.weekly_movement_products AS
   GROUP BY date_from, date_to, department, product_num
 ;
 
+CREATE VIEW inventory_core.weekly_possible_resort_products AS
+ WITH pairs_match AS (
+         SELECT a.week_start,
+            a.week_end,
+            a.department,
+            a.product_num AS product_num_a,
+            b.product_num AS product_num_b,
+            a.deviation_qty_signed AS dev_a,
+            b.deviation_qty_signed AS dev_b
+           FROM inventory_core.inventory_correction_clean_products a
+             JOIN inventory_core.inventory_correction_clean_products b ON a.week_start = b.week_start AND a.week_end = b.week_end AND a.department = b.department AND a.product_num < b.product_num
+             JOIN inventory_core.resort_product_pairs p ON p.product_num_1 = a.product_num AND p.product_num_2 = b.product_num OR p.product_num_1 = b.product_num AND p.product_num_2 = a.product_num
+          WHERE sign(COALESCE(a.deviation_qty_signed, 0::numeric)) = (- sign(COALESCE(b.deviation_qty_signed, 0::numeric))) AND sign(COALESCE(a.deviation_qty_signed, 0::numeric)) <> 0::numeric AND abs(COALESCE(a.deviation_qty_signed, 0::numeric)) >= 0.001 AND abs(COALESCE(b.deviation_qty_signed, 0::numeric)) >= 0.001 AND (abs(abs(COALESCE(a.deviation_qty_signed, 0::numeric)) - abs(COALESCE(b.deviation_qty_signed, 0::numeric))) / NULLIF(GREATEST(abs(COALESCE(a.deviation_qty_signed, 0::numeric)), abs(COALESCE(b.deviation_qty_signed, 0::numeric))), 0::numeric)) <= 0.10
+        ), marked AS (
+         SELECT pairs_match.week_start,
+            pairs_match.week_end,
+            pairs_match.department,
+            pairs_match.product_num_a AS product_num
+           FROM pairs_match
+        UNION
+         SELECT pairs_match.week_start,
+            pairs_match.week_end,
+            pairs_match.department,
+            pairs_match.product_num_b
+           FROM pairs_match
+        )
+ SELECT week_start,
+    week_end,
+    department,
+    product_num,
+    true AS is_possible_resort
+   FROM marked
+;
+
 CREATE VIEW inventory_core.weekly_prev_miscount_last_week_products AS
  WITH weeks AS (
          SELECT DISTINCT inventory_correction_clean_products.week_start
@@ -911,6 +992,29 @@ CREATE VIEW inventory_core.weekly_product_documents_products AS
    FROM wk
 ;
 
+CREATE VIEW inventory_core.weekly_receipt_products AS
+ SELECT date_from AS week_start,
+    date_to AS week_end,
+    department,
+    product_num,
+    sum(amount_in) AS receipt_qty
+   FROM inventory_core.transactions_products
+  WHERE transaction_type = 'INVOICE'::text
+  GROUP BY date_from, date_to, department, product_num
+;
+
+CREATE VIEW inventory_core.weekly_suspicious_receipt_vs_shortage AS
+ SELECT i.week_start,
+    i.week_end,
+    i.department,
+    i.product_num,
+    i.deviation_qty_signed AS shortage_qty_signed,
+    r.receipt_qty
+   FROM inventory_core.inventory_correction_clean_products i
+     JOIN inventory_core.weekly_receipt_products r ON r.week_start = i.week_start AND r.week_end = i.week_end AND r.department = i.department AND r.product_num = i.product_num
+  WHERE i.deviation_qty_signed < 0::numeric AND r.receipt_qty >= 0.001 AND (abs(r.receipt_qty - abs(i.deviation_qty_signed)) / NULLIF(r.receipt_qty, 0::numeric)) <= 0.20
+;
+
 CREATE VIEW inventory_core.weekly_wrong_receipt_mirror_products AS
  WITH mirror_pairs AS (
          SELECT a.week_start,
@@ -942,6 +1046,37 @@ CREATE VIEW inventory_core.weekly_wrong_receipt_mirror_products AS
    FROM marked
 ;
 
+CREATE VIEW inventory_core.weekly_wrong_receipt_type_products AS
+ WITH stage1 AS (
+         SELECT weekly_suspicious_receipt_vs_shortage.week_start,
+            weekly_suspicious_receipt_vs_shortage.week_end,
+            weekly_suspicious_receipt_vs_shortage.department,
+            weekly_suspicious_receipt_vs_shortage.product_num,
+            abs(weekly_suspicious_receipt_vs_shortage.shortage_qty_signed) AS shortage_abs,
+            weekly_suspicious_receipt_vs_shortage.receipt_qty
+           FROM inventory_core.weekly_suspicious_receipt_vs_shortage
+        ), mirror_check AS (
+         SELECT s.week_start,
+            s.week_end,
+            s.department,
+            s.product_num,
+            (EXISTS ( SELECT 1
+                   FROM inventory_core.inventory_correction_clean_products o
+                  WHERE o.week_start = s.week_start AND o.week_end = s.week_end AND o.product_num = s.product_num AND o.department <> s.department AND o.deviation_qty_signed > 0::numeric AND o.deviation_qty_signed >= 0.001 AND (abs(o.deviation_qty_signed - s.shortage_abs) / NULLIF(GREATEST(o.deviation_qty_signed, s.shortage_abs), 0::numeric)) <= 0.20)) AS has_mirror_surplus
+           FROM stage1 s
+        )
+ SELECT week_start,
+    week_end,
+    department,
+    product_num,
+    true AS is_suspicious_receipt_vs_shortage,
+        CASE
+            WHEN has_mirror_surplus THEN 'wrong_branch'::text
+            ELSE 'suspicious_receipt'::text
+        END AS wrong_receipt_type
+   FROM mirror_check
+;
+
 CREATE VIEW inventory_mart.sandbox_inventory_products AS
  SELECT COALESCE(m.week_start, q.week_start) AS week_start,
     COALESCE(m.week_end, q.week_end) AS week_end,
@@ -966,6 +1101,10 @@ CREATE VIEW inventory_mart.sandbox_inventory_products AS
     m.prev_deviation_qty_signed,
     m.is_missing_inventory_position,
     COALESCE(m.is_wrong_receipt_mirror, q.is_wrong_receipt_mirror) AS is_wrong_receipt_mirror,
+    COALESCE(m.is_suspicious_receipt_vs_shortage, q.is_suspicious_receipt_vs_shortage) AS is_suspicious_receipt_vs_shortage,
+    COALESCE(m.wrong_receipt_type, q.wrong_receipt_type) AS wrong_receipt_type,
+    COALESCE(m.wrong_receipt_reason, q.wrong_receipt_reason) AS wrong_receipt_reason,
+    COALESCE(m.is_possible_resort, q.is_possible_resort) AS is_possible_resort,
     q.movement_qty AS qty_movement_qty,
     q.movement_money AS qty_movement_money,
     q.deviation_qty_signed,
@@ -1079,11 +1218,20 @@ CREATE VIEW inventory_mart.weekly_deviation_products_money_v2 AS
     COALESCE(q.is_wrong_prev_inventory, false) AS is_wrong_prev_inventory,
     COALESCE(q.prev_deviation_qty_signed, 0::numeric) AS prev_deviation_qty_signed,
     COALESCE(mi.is_missing_inventory_position, false) AS is_missing_inventory_position,
-    COALESCE(wr.is_wrong_receipt_mirror, false) AS is_wrong_receipt_mirror
+    COALESCE(wr.wrong_receipt_type = 'wrong_branch'::text, false) AS is_wrong_receipt_mirror,
+    COALESCE(wr.is_suspicious_receipt_vs_shortage, false) AS is_suspicious_receipt_vs_shortage,
+    wr.wrong_receipt_type,
+        CASE
+            WHEN wr.wrong_receipt_type = 'wrong_branch'::text THEN 'Приёмка перепутана между филиалами'::text
+            WHEN wr.wrong_receipt_type = 'suspicious_receipt'::text THEN 'Вероятно неверно приняли'::text
+            ELSE NULL::text
+        END AS wrong_receipt_reason,
+    COALESCE(r.is_possible_resort, false) AS is_possible_resort
    FROM base b
      LEFT JOIN qc_prev q ON q.week_start = b.week_start AND q.week_end = b.week_end AND q.department = b.department AND q.product_num = b.product_num
      LEFT JOIN inventory_core.weekly_missing_inventory_positions_products mi ON mi.week_start = b.week_start AND mi.week_end = b.week_end AND mi.department = b.department AND mi.product_num = b.product_num
-     LEFT JOIN inventory_core.weekly_wrong_receipt_mirror_products wr ON wr.week_start = b.week_start AND wr.week_end = b.week_end AND wr.department = b.department AND wr.product_num = b.product_num
+     LEFT JOIN inventory_core.weekly_wrong_receipt_type_products wr ON wr.week_start = b.week_start AND wr.week_end = b.week_end AND wr.department = b.department AND wr.product_num = b.product_num
+     LEFT JOIN inventory_core.weekly_possible_resort_products r ON r.week_start = b.week_start AND r.week_end = b.week_end AND r.department = b.department AND r.product_num = b.product_num
 ;
 
 CREATE VIEW inventory_mart.weekly_deviation_products_qty AS
@@ -1180,12 +1328,21 @@ CREATE VIEW inventory_mart.weekly_deviation_products_qty AS
         END AS potential_loss_month,
     COALESCE(qc.is_wrong_prev_inventory, false) AS is_wrong_prev_inventory,
     qc.prev_deviation_qty_signed,
-    COALESCE(wr.is_wrong_receipt_mirror, false) AS is_wrong_receipt_mirror
+    COALESCE(wr.wrong_receipt_type = 'wrong_branch'::text, false) AS is_wrong_receipt_mirror,
+    COALESCE(wr.is_suspicious_receipt_vs_shortage, false) AS is_suspicious_receipt_vs_shortage,
+    wr.wrong_receipt_type,
+        CASE
+            WHEN wr.wrong_receipt_type = 'wrong_branch'::text THEN 'Приёмка перепутана между филиалами'::text
+            WHEN wr.wrong_receipt_type = 'suspicious_receipt'::text THEN 'Вероятно неверно приняли'::text
+            ELSE NULL::text
+        END AS wrong_receipt_reason,
+    COALESCE(r.is_possible_resort, false) AS is_possible_resort
    FROM m
      FULL JOIN c ON m.week_start = c.week_start AND m.week_end = c.week_end AND m.department = c.department AND m.product_num = c.product_num
      LEFT JOIN n ON n.department = COALESCE(m.department, c.department) AND n.product_num = COALESCE(m.product_num, c.product_num)
      LEFT JOIN qc ON qc.week_start = COALESCE(m.week_start, c.week_start) AND qc.department = COALESCE(m.department, c.department) AND qc.product_num = COALESCE(m.product_num, c.product_num)
-     LEFT JOIN inventory_core.weekly_wrong_receipt_mirror_products wr ON wr.week_start = COALESCE(m.week_start, c.week_start) AND wr.week_end = COALESCE(m.week_end, c.week_end) AND wr.department = COALESCE(m.department, c.department) AND wr.product_num = COALESCE(m.product_num, c.product_num)
+     LEFT JOIN inventory_core.weekly_wrong_receipt_type_products wr ON wr.week_start = COALESCE(m.week_start, c.week_start) AND wr.week_end = COALESCE(m.week_end, c.week_end) AND wr.department = COALESCE(m.department, c.department) AND wr.product_num = COALESCE(m.product_num, c.product_num)
+     LEFT JOIN inventory_core.weekly_possible_resort_products r ON r.week_start = COALESCE(m.week_start, c.week_start) AND r.week_end = COALESCE(m.week_end, c.week_end) AND r.department = COALESCE(m.department, c.department) AND r.product_num = COALESCE(m.product_num, c.product_num)
 ;
 
 CREATE VIEW inventory_mart.weekly_product_documents_products AS
