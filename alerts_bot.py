@@ -95,7 +95,7 @@ RECEIPT_SMALL_PCT_OF_MOVEMENT = 0.15
 VEGETABLE_PRODUCT_NAMES: set = set()
 
 # Списание (WRITEOFF): алармим, если списание за неделю >= этого % от движения по товару.
-WRITEOFF_ALARM_PCT_OF_MOVEMENT = 0.15
+WRITEOFF_ALARM_PCT_OF_MOVEMENT = 0.30
 
 
 def get_departments(conn, week_start: str, week_end: str) -> List[str]:
@@ -257,8 +257,9 @@ def get_top_writeoffs_by_department(
 ) -> Dict[str, List[dict]]:
     """
     По каждому филиалу — топ списаний (WRITEOFF) за неделю, где списание >= pct_threshold
-    от недельного движения. Возвращает { department: [ {product_name, writeoff_qty, writeoff_money, product_measure_unit}, ... ] }.
-    В сообщениях только product_name, артикулы не выводим.
+    от недельного движения.     Исключаем товары, по которым не было продаж (SESSION_WRITEOFF) —
+    только списания (WRITEOFF), без продаж (фритюрное масло, говядина лопатка для персонала и т.п.).
+    Возвращает { department: [ {product_name, writeoff_qty, writeoff_money, product_measure_unit}, ... ] }.
     """
     sql = """
         WITH w AS (
@@ -276,11 +277,20 @@ def get_top_writeoffs_by_department(
             FROM inventory_core.weekly_movement_products
             WHERE week_start = %s AND week_end = %s
         ),
+        has_sales AS (
+            SELECT date_from AS week_start, date_to AS week_end, department, product_num
+            FROM inventory_core.transactions_products
+            WHERE date_from = %s AND date_to = %s
+              AND UPPER(TRIM(transaction_type)) = 'SESSION_WRITEOFF'
+            GROUP BY date_from, date_to, department, product_num
+            HAVING (COALESCE(sum(amount_out), 0) + COALESCE(sum(amount_in), 0)) > 0
+        ),
         filtered AS (
             SELECT w.department, w.product_num, w.product_name, w.product_measure_unit,
                    w.writeoff_qty, w.writeoff_money, m.movement_qty
             FROM w
             JOIN m ON m.department = w.department AND m.product_num = w.product_num
+            JOIN has_sales s ON s.department = w.department AND s.product_num = w.product_num
             WHERE m.movement_qty > 0
               AND w.writeoff_qty >= %s * m.movement_qty
         ),
@@ -297,7 +307,7 @@ def get_top_writeoffs_by_department(
     with conn.cursor() as cur:
         cur.execute(
             sql,
-            (week_start, week_end, week_start, week_end, pct_threshold, top_n),
+            (week_start, week_end, week_start, week_end, week_start, week_end, pct_threshold, top_n),
         )
         out = defaultdict(list)
         for r in cur.fetchall():
@@ -352,9 +362,10 @@ def _block(title: str, items: List[str], empty_msg: str = "нет") -> str:
 
 def _block_top_writeoffs(rows: List[dict]) -> str:
     """Топ списаний: название | qty | деньги. Без артикулов."""
+    pct = int(WRITEOFF_ALARM_PCT_OF_MOVEMENT * 100)
     if not rows:
-        return "📋 Топ списаний на этой неделе:\n  нет позиций со списанием ≥ 15% от движения"
-    lines = ["📋 Топ списаний на этой неделе (≥ 15% от движения):"]
+        return f"📋 Топ списаний на этой неделе:\n  нет позиций со списанием ≥ {pct}% от движения"
+    lines = [f"📋 Топ списаний на этой неделе (≥ {pct}% от движения):"]
     for r in rows:
         name = r.get("product_name") or "—"
         qty = r.get("writeoff_qty") or 0
@@ -551,12 +562,9 @@ def build_report_messages_per_department(cfg: BotConfig) -> Tuple[str, str, List
             "",
             _block_top_writeoffs(top_writeoffs.get(dept, [])),
             "",
-            _block_top_money(
-                neg_rows, "📉 ТОП недостач в деньгах:", receipts,
-                movement_by_product_num=movement, is_shortage_block=True,
-            ),
+            _block_top_money(neg_rows, "📉 ТОП недостач в деньгах:"),
             "",
-            _block_top_money(pos_rows, "📈 ТОП излишков в деньгах:", receipts),
+            _block_top_money(pos_rows, "📈 ТОП излишков в деньгах:"),
             "",
             receipt_summary,
             "",

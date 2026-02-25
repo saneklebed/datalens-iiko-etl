@@ -16,3 +16,5 @@ weekly_product_documents_include_spoilage.sql
   - Таблица списаний в дашборде (датасет weekly_product_documents_products): показывать в т.ч. списания с типом «Порча». Движение (оборот за неделю) по-прежнему считается без Порчи — фильтр остаётся в inventory_core.transactions; view weekly_product_documents_products переведён на чтение base из olap_postings (без фильтра по contr_account_name). Выполнить в Neon один раз.
 
 После любых изменений в Neon при необходимости обновить дамп: python scripts/dump_neon_ddl.py и python scripts/dump_neon_schema.py (или workflow Dump Neon schema).
+
+Тест коммита.
