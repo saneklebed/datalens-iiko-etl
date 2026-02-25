@@ -1,7 +1,8 @@
 import asyncio
 import os
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import psycopg2
 from psycopg2.extras import DictCursor
@@ -20,7 +21,7 @@ class BotConfig:
     telegram_token: str
     allowed_chat_id: int
 
-    top_n: int = 10
+    top_n: int = 5
 
 
 def _env(name: str) -> str:
@@ -47,7 +48,7 @@ def load_config() -> BotConfig:
         neon_password=_env("NEON_PASSWORD"),
         telegram_token=_env("TELEGRAM_BOT_TOKEN"),
         allowed_chat_id=int(_env("TELEGRAM_CHAT_ID")),
-        top_n=_int_optional("ALERTS_TOP_N", 10),
+        top_n=_int_optional("ALERTS_TOP_N", 5),
     )
 
 
@@ -77,130 +78,206 @@ def get_last_week(conn) -> Tuple[str, str]:
     return str(row["week_start"]), str(row["week_end"])
 
 
-def get_counts(conn, week_start: str, week_end: str) -> Tuple[int, int]:
-    sql_miscount = """
-        select count(*) as cnt
+SEP = " | "
+
+
+def get_departments(conn, week_start: str, week_end: str) -> List[str]:
+    sql = """
+        select distinct department
+        from inventory_mart.weekly_deviation_products_money_v2
+        where week_start = %s and week_end = %s
+        order by 1;
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql, (week_start, week_end))
+        return [r["department"] for r in cur.fetchall()]
+
+
+def get_missing_by_department(conn, week_start: str, week_end: str) -> Dict[str, List[str]]:
+    sql = """
+        select department, product_name
+        from inventory_mart.weekly_deviation_products_money_v2
+        where week_start = %s and week_end = %s and is_missing_inventory_position
+        order by department, product_name;
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql, (week_start, week_end))
+        out = defaultdict(list)
+        for r in cur.fetchall():
+            out[r["department"]].append(r["product_name"] or "")
+        return dict(out)
+
+
+def get_miscount_by_department(conn, week_start: str, week_end: str) -> Dict[str, List[str]]:
+    sql = """
+        select department, product_name
         from inventory_mart.weekly_deviation_products_qty
-        where week_start = %s and week_end = %s
-          and is_wrong_prev_inventory;
-    """
-    sql_missing = """
-        select count(*) as cnt
-        from inventory_mart.weekly_deviation_products_money_v2
-        where week_start = %s and week_end = %s
-          and is_missing_inventory_position;
+        where week_start = %s and week_end = %s and is_wrong_prev_inventory
+        order by department, product_name;
     """
     with conn.cursor() as cur:
-        cur.execute(sql_miscount, (week_start, week_end))
-        miscount = cur.fetchone()["cnt"]
-        cur.execute(sql_missing, (week_start, week_end))
-        missing = cur.fetchone()["cnt"]
-    return int(miscount), int(missing)
+        cur.execute(sql, (week_start, week_end))
+        out = defaultdict(list)
+        for r in cur.fetchall():
+            out[r["department"]].append(r["product_name"] or "")
+        return dict(out)
 
 
-def get_top_negative_money(conn, week_start: str, week_end: str, top_n: int) -> List[dict]:
+def _top_neg_money_by_dept(conn, week_start: str, week_end: str, top_n: int) -> Dict[str, List[dict]]:
     sql = """
-        select department,
-               product_num,
-               product_name,
-               deviation_money_signed,
-               excess_loss_money,
-               excess_deviation_money
+        select department, product_name, deviation_money_signed,
+               coalesce(excess_loss_money, 0) as excess
         from inventory_mart.weekly_deviation_products_money_v2
-        where week_start = %s and week_end = %s
-          and deviation_money_signed < 0
-        order by excess_loss_money desc nulls last
-        limit %s;
+        where week_start = %s and week_end = %s and deviation_money_signed < 0
+        order by department, excess_loss_money desc nulls last;
     """
     with conn.cursor() as cur:
-        cur.execute(sql, (week_start, week_end, top_n))
-        return list(cur.fetchall())
+        cur.execute(sql, (week_start, week_end))
+        out = defaultdict(list)
+        for r in cur.fetchall():
+            dept = r["department"]
+            if len(out[dept]) < top_n:
+                out[dept].append(r)
+        return dict(out)
 
 
-def get_top_positive_money(conn, week_start: str, week_end: str, top_n: int) -> List[dict]:
+def _top_pos_money_by_dept(conn, week_start: str, week_end: str, top_n: int) -> Dict[str, List[dict]]:
     sql = """
-        select department,
-               product_num,
-               product_name,
-               deviation_money_signed,
-               excess_deviation_money
+        select department, product_name, deviation_money_signed,
+               coalesce(excess_deviation_money, 0) as excess
         from inventory_mart.weekly_deviation_products_money_v2
-        where week_start = %s and week_end = %s
-          and deviation_money_signed > 0
-        order by excess_deviation_money desc nulls last
-        limit %s;
+        where week_start = %s and week_end = %s and deviation_money_signed > 0
+        order by department, excess_deviation_money desc nulls last;
     """
     with conn.cursor() as cur:
-        cur.execute(sql, (week_start, week_end, top_n))
-        return list(cur.fetchall())
+        cur.execute(sql, (week_start, week_end))
+        out = defaultdict(list)
+        for r in cur.fetchall():
+            dept = r["department"]
+            if len(out[dept]) < top_n:
+                out[dept].append(r)
+        return dict(out)
 
 
-def get_top_pct(conn, week_start: str, week_end: str, top_n: int, positive: bool) -> List[dict]:
-    sql = """
-        select department,
-               product_num,
-               product_name,
-               fact_deviation_pct_qty,
-               excess_pct_qty
+def _top_pct_by_dept(
+    conn, week_start: str, week_end: str, top_n: int, positive: bool
+) -> Dict[str, List[dict]]:
+    sign = ">" if positive else "<"
+    sql = f"""
+        select department, product_name, fact_deviation_pct_qty, excess_pct_qty
         from inventory_mart.weekly_deviation_products_qty
-        where week_start = %s and week_end = %s
-          and fact_deviation_pct_qty {sign} 0
-        order by excess_pct_qty desc nulls last
-        limit %s;
-    """.format(sign=">" if positive else "<")
+        where week_start = %s and week_end = %s and fact_deviation_pct_qty {sign} 0
+        order by department, excess_pct_qty desc nulls last;
+    """
     with conn.cursor() as cur:
-        cur.execute(sql, (week_start, week_end, top_n))
-        return list(cur.fetchall())
+        cur.execute(sql, (week_start, week_end))
+        out = defaultdict(list)
+        for r in cur.fetchall():
+            dept = r["department"]
+            if len(out[dept]) < top_n:
+                out[dept].append(r)
+        return dict(out)
 
 
-def format_top_money(rows: List[dict], title: str) -> str:
+def get_summary_money_by_department(conn, week_start: str, week_end: str) -> List[Tuple[str, float]]:
+    sql = """
+        select department, sum(deviation_money_signed) as total
+        from inventory_mart.weekly_deviation_products_money_v2
+        where week_start = %s and week_end = %s
+        group by department
+        order by 1;
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql, (week_start, week_end))
+        return [(r["department"], float(r["total"] or 0)) for r in cur.fetchall()]
+
+
+def _block(title: str, items: List[str], empty_msg: str = "нет") -> str:
+    if not items:
+        return f"{title}\n  {empty_msg}"
+    return title + "\n" + "\n".join(f"  • {x}" for x in items)
+
+
+def _block_top_money(rows: List[dict], title: str) -> str:
     if not rows:
-        return f"{title}:\n  нет позиций\n"
-    lines = [f"{title}:"]
+        return f"{title}\n  нет позиций"
+    lines = [title]
     for i, r in enumerate(rows, start=1):
-        dept = r["department"]
-        name = r["product_name"]
-        num = r["product_num"]
-        dev = r["deviation_money_signed"]
-        excess = r.get("excess_loss_money") or r.get("excess_deviation_money")
-        lines.append(f"{i}) {dept} / {name} ({num}): {dev:.0f} ₽, превышение нормы {excess:.0f} ₽")
-    return "\n".join(lines) + "\n"
+        name = (r.get("product_name") or "").strip()
+        dev = r.get("deviation_money_signed") or 0
+        excess = r.get("excess") or 0
+        lines.append(f"  {i}. {name}{SEP}{dev:,.0f} ₽{SEP}сверх нормы {excess:,.0f} ₽".replace(",", " "))
+    return "\n".join(lines)
 
 
-def format_top_pct(rows: List[dict], title: str) -> str:
+def _block_top_pct(rows: List[dict], title: str) -> str:
     if not rows:
-        return f"{title}:\n  нет позиций\n"
-    lines = [f"{title}:"]
+        return f"{title}\n  нет позиций"
+    lines = [title]
     for i, r in enumerate(rows, start=1):
-        dept = r["department"]
-        name = r["product_name"]
-        num = r["product_num"]
-        dev = r["fact_deviation_pct_qty"] * 100 if r["fact_deviation_pct_qty"] is not None else 0
-        excess = r["excess_pct_qty"] * 100 if r["excess_pct_qty"] is not None else 0
-        lines.append(f"{i}) {dept} / {name} ({num}): {dev:.1f}% (сверх нормы {excess:.1f} п.п.)")
-    return "\n".join(lines) + "\n"
+        name = (r.get("product_name") or "").strip()
+        dev = r.get("fact_deviation_pct_qty")
+        excess = r.get("excess_pct_qty")
+        dev_pct = (dev * 100) if dev is not None else 0
+        excess_pct = (excess * 100) if excess is not None else 0
+        lines.append(f"  {i}. {name}{SEP}{dev_pct:.1f}%{SEP}сверх нормы {excess_pct:.1f} п.п.".replace(",", "."))
+    return "\n".join(lines)
+
+
+def build_report_messages_per_department(cfg: BotConfig) -> Tuple[str, str, List[str]]:
+    """Возвращает (week_start, week_end, список текстов — по одному на филиал)."""
+    with db_connect(cfg) as conn:
+        week_start, week_end = get_last_week(conn)
+        depts = get_departments(conn, week_start, week_end)
+        missing = get_missing_by_department(conn, week_start, week_end)
+        miscount = get_miscount_by_department(conn, week_start, week_end)
+        top_neg_m = _top_neg_money_by_dept(conn, week_start, week_end, cfg.top_n)
+        top_pos_m = _top_pos_money_by_dept(conn, week_start, week_end, cfg.top_n)
+        top_neg_p = _top_pct_by_dept(conn, week_start, week_end, cfg.top_n, positive=False)
+        top_pos_p = _top_pct_by_dept(conn, week_start, week_end, cfg.top_n, positive=True)
+
+    messages = []
+    for dept in depts:
+        parts = [
+            f"📅 Неделя {week_start} — {week_end}",
+            "",
+            f"🏪 {dept}",
+            "─────────────────────",
+            _block("📌 Несохранённые позиции:", missing.get(dept, [])),
+            "",
+            _block("⚠️ Неверно посчитанные позиции:", miscount.get(dept, [])),
+            "",
+            _block_top_money(top_neg_m.get(dept, []), "📉 ТОП недостач в деньгах:"),
+            "",
+            _block_top_money(top_pos_m.get(dept, []), "📈 ТОП излишков в деньгах:"),
+            "",
+            _block_top_pct(top_neg_p.get(dept, []), "📉 ТОП недостач в %:"),
+            "",
+            _block_top_pct(top_pos_p.get(dept, []), "📈 ТОП излишков в %:"),
+        ]
+        messages.append("\n".join(parts))
+    return week_start, week_end, messages
+
+
+def build_summary_message(week_start: str, week_end: str, summary: List[Tuple[str, float]]) -> str:
+    if not summary:
+        return f"📊 Сводка за {week_start} — {week_end}\nНет данных по филиалам."
+    lines = [
+        f"📊 Сводка за неделю {week_start} — {week_end}",
+        "сумма недостач + излишков по филиалам:",
+        "",
+    ]
+    for dept, total in summary:
+        lines.append(f"  {dept}{SEP}{total:,.0f} ₽".replace(",", " "))
+    return "\n".join(lines)
 
 
 def build_report_text(cfg: BotConfig) -> str:
+    """Один большой текст (для обратной совместимости /week в режиме bot)."""
+    week_start, week_end, messages = build_report_messages_per_department(cfg)
     with db_connect(cfg) as conn:
-        week_start, week_end = get_last_week(conn)
-        miscount_cnt, missing_cnt = get_counts(conn, week_start, week_end)
-        top_neg_money = get_top_negative_money(conn, week_start, week_end, cfg.top_n)
-        top_pos_money = get_top_positive_money(conn, week_start, week_end, cfg.top_n)
-        top_neg_pct = get_top_pct(conn, week_start, week_end, cfg.top_n, positive=False)
-        top_pos_pct = get_top_pct(conn, week_start, week_end, cfg.top_n, positive=True)
-
-    parts = [
-        f"Неделя {week_start} — {week_end}",
-        "",
-        f"Неверно посчитанные позиции неделю назад: {miscount_cnt}",
-        f"Несохранённые позиции: {missing_cnt}",
-        "",
-        format_top_money(top_neg_money, "ТОП по деньгам (недостачи)"),
-        format_top_money(top_pos_money, "ТОП по деньгам (излишки)"),
-        format_top_pct(top_neg_pct, "ТОП по отклонениям в % (недостачи)"),
-        format_top_pct(top_pos_pct, "ТОП по отклонениям в % (излишки)"),
-    ]
+        summary = get_summary_money_by_department(conn, week_start, week_end)
+    parts = ["\n\n".join(messages), "", build_summary_message(week_start, week_end, summary)]
     return "\n".join(parts)
 
 
@@ -237,22 +314,30 @@ def main() -> None:
         app.add_handler(CommandHandler("week", week))
         app.run_polling()
     else:
-        # Режим по умолчанию: один раз собрать отчёт и отправить в указанный чат
+        # Режим по умолчанию: по одному сообщению на филиал, затем сводка
         from telegram import Bot
         from telegram.error import ChatMigrated
 
-        text = build_report_text(cfg)
+        week_start, week_end, dept_messages = build_report_messages_per_department(cfg)
+        with db_connect(cfg) as conn:
+            summary = get_summary_money_by_department(conn, week_start, week_end)
+        summary_text = build_summary_message(week_start, week_end, summary)
         bot = Bot(token=cfg.telegram_token)
 
         async def send():
+            chat_id = cfg.allowed_chat_id
             try:
-                await bot.send_message(chat_id=cfg.allowed_chat_id, text=text)
+                for msg in dept_messages:
+                    await bot.send_message(chat_id=chat_id, text=msg)
+                await bot.send_message(chat_id=chat_id, text=summary_text)
             except ChatMigrated as e:
-                # Группа переехала в супергруппу — новый chat_id
-                await bot.send_message(chat_id=e.new_chat_id, text=text)
+                chat_id = e.new_chat_id
                 print(
-                    f"Чат переехал в супергруппу. Обнови секрет TELEGRAM_CHAT_ID на: {e.new_chat_id}"
+                    f"Чат переехал в супергруппу. Обнови секрет TELEGRAM_CHAT_ID на: {chat_id}"
                 )
+                for msg in dept_messages:
+                    await bot.send_message(chat_id=chat_id, text=msg)
+                await bot.send_message(chat_id=chat_id, text=summary_text)
 
         asyncio.run(send())
 
