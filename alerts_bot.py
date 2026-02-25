@@ -1,3 +1,4 @@
+import asyncio
 import os
 from dataclasses import dataclass
 from typing import List, Tuple
@@ -241,7 +242,11 @@ def main() -> None:
 
         text = build_report_text(cfg)
         bot = Bot(token=cfg.telegram_token)
-        bot.send_message(chat_id=cfg.allowed_chat_id, text=text)
+
+        async def send():
+            await bot.send_message(chat_id=cfg.allowed_chat_id, text=text)
+
+        asyncio.run(send())
 
 
 if __name__ == "__main__":
