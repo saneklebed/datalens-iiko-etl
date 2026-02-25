@@ -3,7 +3,7 @@ import os
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import psycopg2
 from psycopg2.extras import DictCursor
@@ -87,6 +87,16 @@ def week_end_to_display_end(week_end: str) -> str:
 
 SEP = " | "
 
+# Порог: приход считается «мелким» (дозаказ), если < 15% от недельного движения.
+RECEIPT_SMALL_PCT_OF_MOVEMENT = 0.15
+
+# Скоропорт (овощи) — приезжают 3 раза в неделю. Для них несколько приходов за неделю норма.
+# Заполни названия товаров (product_name) или оставь пустым; потом можно вынести в env/конфиг.
+VEGETABLE_PRODUCT_NAMES: set = set()
+
+# Списание (WRITEOFF): алармим, если списание за неделю >= этого % от движения по товару.
+WRITEOFF_ALARM_PCT_OF_MOVEMENT = 0.15
+
 
 def get_departments(conn, week_start: str, week_end: str) -> List[str]:
     sql = """
@@ -147,7 +157,7 @@ def get_resort_by_department(conn, week_start: str, week_end: str) -> Dict[str, 
 
 def _top_neg_money_by_dept(conn, week_start: str, week_end: str, top_n: int) -> Dict[str, List[dict]]:
     sql = """
-        select department, product_name, deviation_money_signed,
+        select department, product_num, product_name, deviation_money_signed,
                coalesce(allowed_loss_money, 0) as norm,
                coalesce(excess_loss_money, 0) as excess
         from inventory_mart.weekly_deviation_products_money_v2
@@ -167,7 +177,7 @@ def _top_neg_money_by_dept(conn, week_start: str, week_end: str, top_n: int) -> 
 
 def _top_pos_money_by_dept(conn, week_start: str, week_end: str, top_n: int) -> Dict[str, List[dict]]:
     sql = """
-        select department, product_name, deviation_money_signed,
+        select department, product_num, product_name, deviation_money_signed,
                coalesce(allowed_loss_money, 0) as norm,
                coalesce(excess_deviation_money, 0) as excess
         from inventory_mart.weekly_deviation_products_money_v2
@@ -219,18 +229,209 @@ def get_summary_money_by_department(conn, week_start: str, week_end: str) -> Lis
         return [(r["department"], float(r["total"] or 0)) for r in cur.fetchall()]
 
 
+def get_movement_qty_for_products(
+    conn, week_start: str, week_end: str, department: str, product_nums: List[str]
+) -> Dict[str, float]:
+    """Недельное движение (qty) по товарам для проверки задублированного прихода."""
+    if not product_nums:
+        return {}
+    sql = """
+        select product_num, movement_qty
+        from inventory_core.weekly_movement_products
+        where week_start = %s and week_end = %s and department = %s and product_num = ANY(%s);
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql, (week_start, week_end, department, product_nums))
+        return {
+            r["product_num"]: float(r["movement_qty"] or 0)
+            for r in cur.fetchall()
+        }
+
+
+def get_top_writeoffs_by_department(
+    conn,
+    week_start: str,
+    week_end: str,
+    top_n: int,
+    pct_threshold: float = WRITEOFF_ALARM_PCT_OF_MOVEMENT,
+) -> Dict[str, List[dict]]:
+    """
+    По каждому филиалу — топ списаний (WRITEOFF) за неделю, где списание >= pct_threshold
+    от недельного движения. Возвращает { department: [ {product_name, writeoff_qty, writeoff_money, product_measure_unit}, ... ] }.
+    В сообщениях только product_name, артикулы не выводим.
+    """
+    sql = """
+        WITH w AS (
+            SELECT department, product_num,
+                   max(product_name) AS product_name,
+                   max(product_measure_unit) AS product_measure_unit,
+                   sum(abs(qty_signed)) AS writeoff_qty,
+                   sum(abs(money_signed)) AS writeoff_money
+            FROM inventory_mart.weekly_product_documents_products
+            WHERE week_start = %s AND week_end = %s AND transaction_type = 'WRITEOFF'
+            GROUP BY department, product_num
+        ),
+        m AS (
+            SELECT department, product_num, movement_qty
+            FROM inventory_core.weekly_movement_products
+            WHERE week_start = %s AND week_end = %s
+        ),
+        filtered AS (
+            SELECT w.department, w.product_num, w.product_name, w.product_measure_unit,
+                   w.writeoff_qty, w.writeoff_money, m.movement_qty
+            FROM w
+            JOIN m ON m.department = w.department AND m.product_num = w.product_num
+            WHERE m.movement_qty > 0
+              AND w.writeoff_qty >= %s * m.movement_qty
+        ),
+        ranked AS (
+            SELECT department, product_name, product_measure_unit, writeoff_qty, writeoff_money,
+                   row_number() OVER (PARTITION BY department ORDER BY writeoff_money DESC) AS rn
+            FROM filtered
+        )
+        SELECT department, product_name, product_measure_unit, writeoff_qty, writeoff_money
+        FROM ranked
+        WHERE rn <= %s
+        ORDER BY department, writeoff_money DESC;
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            sql,
+            (week_start, week_end, week_start, week_end, pct_threshold, top_n),
+        )
+        out = defaultdict(list)
+        for r in cur.fetchall():
+            out[r["department"]].append(
+                {
+                    "product_name": (r["product_name"] or "").strip() or "—",
+                    "writeoff_qty": float(r["writeoff_qty"] or 0),
+                    "writeoff_money": float(r["writeoff_money"] or 0),
+                    "product_measure_unit": (r["product_measure_unit"] or "ед.").strip(),
+                }
+            )
+        return dict(out)
+
+
+def get_receipts_for_products(
+    conn, week_start: str, week_end: str, department: str, product_nums: List[str]
+) -> Dict[str, List[dict]]:
+    """По каждому product_num из списка — приходы (INVOICE) за неделю на филиале.
+    Возвращает: { product_num: [ {posting_dt, contr_account_name, qty_signed, money_signed}, ... ] }.
+    """
+    if not product_nums:
+        return {}
+    sql = """
+        select product_num, posting_dt, contr_account_name, qty_signed, money_signed,
+               product_measure_unit
+        from inventory_mart.weekly_product_documents_products
+        where week_start = %s and week_end = %s and department = %s
+          and transaction_type = 'INVOICE' and product_num = ANY(%s)
+        order by product_num, posting_dt;
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql, (week_start, week_end, department, product_nums))
+        out = defaultdict(list)
+        for r in cur.fetchall():
+            out[r["product_num"]].append(
+                {
+                    "posting_dt": r["posting_dt"],
+                    "contr_account_name": r["contr_account_name"] or "",
+                    "qty_signed": r["qty_signed"],
+                    "money_signed": r["money_signed"],
+                    "product_measure_unit": (r.get("product_measure_unit") or "ед.").strip(),
+                }
+            )
+        return dict(out)
+
+
 def _block(title: str, items: List[str], empty_msg: str = "нет") -> str:
     if not items:
         return f"{title}\n  {empty_msg}"
     return title + "\n" + "\n".join(f"  • {x}" for x in items)
 
 
-def _block_top_money(rows: List[dict], title: str) -> str:
+def _block_top_writeoffs(rows: List[dict]) -> str:
+    """Топ списаний: название | qty | деньги. Без артикулов."""
+    if not rows:
+        return "📋 Топ списаний на этой неделе:\n  нет позиций со списанием ≥ 15% от движения"
+    lines = ["📋 Топ списаний на этой неделе (≥ 15% от движения):"]
+    for r in rows:
+        name = r.get("product_name") or "—"
+        qty = r.get("writeoff_qty") or 0
+        money = r.get("writeoff_money") or 0
+        unit = r.get("product_measure_unit") or "ед."
+        lines.append(f"  {name}{SEP}{qty:.2f} {unit}{SEP}{money:,.0f} ₽".replace(",", " "))
+    return "\n".join(lines)
+
+
+def _format_receipt_line(receipts: List[dict]) -> str:
+    """Одна строка по приходам (для излишков): «Приходы: да, 12.02 Поставщик +5 кг» или «Приходы: нет»."""
+    if not receipts:
+        return "Приходы: нет"
+    parts = []
+    for rec in receipts[:5]:
+        dt = rec.get("posting_dt")
+        date_str = dt.strftime("%d.%m") if hasattr(dt, "strftime") else str(dt)[:10]
+        contr = (rec.get("contr_account_name") or "").strip() or "—"
+        qty = rec.get("qty_signed") or 0
+        unit = rec.get("product_measure_unit") or "ед."
+        parts.append(f"{date_str} {contr} {qty:+.2f} {unit}")
+    if len(receipts) > 5:
+        parts.append(f"... ещё {len(receipts) - 5}")
+    return "Приходы: да, " + "; ".join(parts)
+
+
+def _is_possible_duplicate_receipt(
+    receipts: List[dict], movement_qty: float, product_name: str
+) -> bool:
+    """
+    Задублированный приход: 2+ прихода, при этом каждый приход >= 15% от недельного движения
+    (нет «мелкого» дозаказа). Скоропорт (овощи) пока не исключаем — список VEGETABLE_PRODUCT_NAMES
+    можно заполнить, тогда для них 3 прихода в неделю будут нормой.
+    """
+    if movement_qty is None or movement_qty <= 0 or len(receipts) < 2:
+        return False
+    if product_name and product_name.strip() in VEGETABLE_PRODUCT_NAMES:
+        # Овощи приезжают 3 раза в неделю — несколько приходов норма.
+        return False
+    threshold = RECEIPT_SMALL_PCT_OF_MOVEMENT * movement_qty
+    qtys = [abs(float(rec.get("qty_signed") or 0)) for rec in receipts]
+    # Если хотя бы один приход «мелкий» (< 15% движения) — считаем дозаказ, не дубль.
+    if any(q < threshold for q in qtys):
+        return False
+    # Два и более «крупных» прихода при недостаче — возможный дубль накладной.
+    return True
+
+
+def _format_receipt_line_shortage(
+    receipts: List[dict],
+    movement_qty: float,
+    product_name: str,
+) -> str:
+    """
+    Строка по приходам для ТОП-5 недостач: приходы + пометка о возможном задублированном приходе.
+    В сообщениях только product_name, артикулы не выводим.
+    """
+    if not receipts:
+        return "Приходы: нет"
+    if _is_possible_duplicate_receipt(receipts, movement_qty, product_name):
+        return "⚠️ Возможный задублированный приход (2+ крупных прихода при недостаче)"
+    return _format_receipt_line(receipts)
+
+
+def _block_top_money(
+    rows: List[dict],
+    title: str,
+    receipts_by_product_num: Optional[Dict[str, List[dict]]] = None,
+    movement_by_product_num: Optional[Dict[str, float]] = None,
+    is_shortage_block: bool = False,
+) -> str:
+    """В сообщениях только product_name, артикулы не выводим."""
     if not rows:
         return f"{title}\n  нет позиций"
     lines = [title]
     for i, r in enumerate(rows, start=1):
-        name = (r.get("product_name") or "").strip()
+        name = (r.get("product_name") or "").strip() or "—"
         dev = r.get("deviation_money_signed") or 0
         norm = r.get("norm") or 0
         excess = r.get("excess") or 0
@@ -239,6 +440,14 @@ def _block_top_money(rows: List[dict], title: str) -> str:
                 ",", " "
             )
         )
+        if receipts_by_product_num is not None:
+            pnum = r.get("product_num")
+            recs = (receipts_by_product_num.get(pnum) or []) if pnum else []
+            mov = (movement_by_product_num or {}).get(pnum) if movement_by_product_num else None
+            if is_shortage_block and mov is not None:
+                lines.append(f"      {_format_receipt_line_shortage(recs, mov, name)}")
+            else:
+                lines.append(f"      {_format_receipt_line(recs)}")
     return "\n".join(lines)
 
 
@@ -275,9 +484,60 @@ def build_report_messages_per_department(cfg: BotConfig) -> Tuple[str, str, List
         top_neg_p = _top_pct_by_dept(conn, week_start, week_end, cfg.top_n, positive=False)
         top_pos_p = _top_pct_by_dept(conn, week_start, week_end, cfg.top_n, positive=True)
 
+        # Приходы и движение по ТОП-5 (недостачи + излишки) для проверки накладных
+        receipts_by_dept: Dict[str, Dict[str, List[dict]]] = {}
+        movement_by_dept: Dict[str, Dict[str, float]] = {}
+        for dept in depts:
+            product_nums = []
+            for r in (top_neg_m.get(dept, []) or []) + (top_pos_m.get(dept, []) or []):
+                pnum = r.get("product_num")
+                if pnum and pnum not in product_nums:
+                    product_nums.append(pnum)
+            receipts_by_dept[dept] = get_receipts_for_products(
+                conn, week_start, week_end, dept, product_nums
+            )
+            # Движение нужно только для ТОП-5 недостач (проверка задублированного прихода)
+            shortage_nums = [r.get("product_num") for r in (top_neg_m.get(dept, []) or []) if r.get("product_num")]
+            movement_by_dept[dept] = get_movement_qty_for_products(
+                conn, week_start, week_end, dept, shortage_nums
+            ) if shortage_nums else {}
+
+        # Топ списаний по всем товарам: списание >= 15% от движения
+        top_writeoffs = get_top_writeoffs_by_department(
+            conn, week_start, week_end, cfg.top_n, WRITEOFF_ALARM_PCT_OF_MOVEMENT
+        )
+
     display_end = week_end_to_display_end(week_end)
     messages = []
     for dept in depts:
+        receipts = receipts_by_dept.get(dept, {})
+        movement = movement_by_dept.get(dept, {})
+        neg_rows = top_neg_m.get(dept, [])
+        pos_rows = top_pos_m.get(dept, [])
+
+        # По ТОП-5 недостач: возможный задублированный приход (только названия, без артикулов)
+        duplicate_names = []
+        for r in neg_rows:
+            pnum = r.get("product_num")
+            name = (r.get("product_name") or "").strip() or "—"
+            recs = receipts.get(pnum, []) if pnum else []
+            mov = movement.get(pnum) if pnum else None
+            if _is_possible_duplicate_receipt(recs, mov or 0, name):
+                duplicate_names.append(name)
+        no_receipt_names = []
+        for r in neg_rows:
+            pnum = r.get("product_num")
+            if pnum and not receipts.get(pnum):
+                name = (r.get("product_name") or "").strip()
+                if name:
+                    no_receipt_names.append(name)
+        if duplicate_names:
+            receipt_summary = f"⚠️ Возможный задублированный приход по ТОП-5 недостач: {', '.join(duplicate_names[:10])}{'…' if len(duplicate_names) > 10 else ''}"
+        elif no_receipt_names:
+            receipt_summary = f"ℹ️ По позициям приходов за неделю не было — проверьте накладные: {', '.join(no_receipt_names[:10])}{'…' if len(no_receipt_names) > 10 else ''}"
+        else:
+            receipt_summary = "✅ Проверка приходов по ТОП-5 недостач: задублированных приходов не выявлено."
+
         parts = [
             f"📅 Неделя {week_start} — {display_end}",
             "",
@@ -289,9 +549,16 @@ def build_report_messages_per_department(cfg: BotConfig) -> Tuple[str, str, List
             "",
             _block("🔄 Позиции с пересортом:", resort.get(dept, [])),
             "",
-            _block_top_money(top_neg_m.get(dept, []), "📉 ТОП недостач в деньгах:"),
+            _block_top_writeoffs(top_writeoffs.get(dept, [])),
             "",
-            _block_top_money(top_pos_m.get(dept, []), "📈 ТОП излишков в деньгах:"),
+            _block_top_money(
+                neg_rows, "📉 ТОП недостач в деньгах:", receipts,
+                movement_by_product_num=movement, is_shortage_block=True,
+            ),
+            "",
+            _block_top_money(pos_rows, "📈 ТОП излишков в деньгах:", receipts),
+            "",
+            receipt_summary,
             "",
             _block_top_pct(top_neg_p.get(dept, []), "📉 ТОП недостач в %:"),
             "",
