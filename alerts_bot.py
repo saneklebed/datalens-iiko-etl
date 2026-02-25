@@ -29,6 +29,13 @@ def _env(name: str) -> str:
     return str(v).strip()
 
 
+def _int_optional(name: str, default: int) -> int:
+    v = os.getenv(name)
+    if v is None or not str(v).strip():
+        return default
+    return int(str(v).strip())
+
+
 def load_config() -> BotConfig:
     load_dotenv()
 
@@ -39,7 +46,7 @@ def load_config() -> BotConfig:
         neon_password=_env("NEON_PASSWORD"),
         telegram_token=_env("TELEGRAM_BOT_TOKEN"),
         allowed_chat_id=int(_env("TELEGRAM_CHAT_ID")),
-        top_n=int(os.getenv("ALERTS_TOP_N") or "10"),
+        top_n=_int_optional("ALERTS_TOP_N", 10),
     )
 
 
