@@ -123,12 +123,28 @@ def get_miscount_by_department(conn, week_start: str, week_end: str) -> Dict[str
         return dict(out)
 
 
+def get_resort_by_department(conn, week_start: str, week_end: str) -> Dict[str, List[str]]:
+    sql = """
+        select department, product_name
+        from inventory_mart.weekly_deviation_products_money_v2
+        where week_start = %s and week_end = %s and is_possible_resort
+        order by department, product_name;
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql, (week_start, week_end))
+        out = defaultdict(list)
+        for r in cur.fetchall():
+            out[r["department"]].append(r["product_name"] or "")
+        return dict(out)
+
+
 def _top_neg_money_by_dept(conn, week_start: str, week_end: str, top_n: int) -> Dict[str, List[dict]]:
     sql = """
         select department, product_name, deviation_money_signed,
                coalesce(excess_loss_money, 0) as excess
         from inventory_mart.weekly_deviation_products_money_v2
         where week_start = %s and week_end = %s and deviation_money_signed < 0
+          and (is_possible_resort is null or is_possible_resort = false)
         order by department, excess_loss_money desc nulls last;
     """
     with conn.cursor() as cur:
@@ -147,6 +163,7 @@ def _top_pos_money_by_dept(conn, week_start: str, week_end: str, top_n: int) -> 
                coalesce(excess_deviation_money, 0) as excess
         from inventory_mart.weekly_deviation_products_money_v2
         where week_start = %s and week_end = %s and deviation_money_signed > 0
+          and (is_possible_resort is null or is_possible_resort = false)
         order by department, excess_deviation_money desc nulls last;
     """
     with conn.cursor() as cur:
@@ -167,6 +184,7 @@ def _top_pct_by_dept(
         select department, product_name, fact_deviation_pct_qty, excess_pct_qty
         from inventory_mart.weekly_deviation_products_qty
         where week_start = %s and week_end = %s and fact_deviation_pct_qty {sign} 0
+          and (is_possible_resort is null or is_possible_resort = false)
         order by department, excess_pct_qty desc nulls last;
     """
     with conn.cursor() as cur:
@@ -210,7 +228,7 @@ def _block_top_money(rows: List[dict], title: str) -> str:
     return "\n".join(lines)
 
 
-def _block_top_pct(rows: List[dict], title: str) -> str:
+def _block_top_pct(rows: List[dict], title: str, excess_suffix: str = " п.п.") -> str:
     if not rows:
         return f"{title}\n  нет позиций"
     lines = [title]
@@ -220,7 +238,7 @@ def _block_top_pct(rows: List[dict], title: str) -> str:
         excess = r.get("excess_pct_qty")
         dev_pct = (dev * 100) if dev is not None else 0
         excess_pct = (excess * 100) if excess is not None else 0
-        lines.append(f"  {i}. {name}{SEP}{dev_pct:.1f}%{SEP}сверх нормы {excess_pct:.1f} п.п.".replace(",", "."))
+        lines.append(f"  {i}. {name}{SEP}{dev_pct:.1f}%{SEP}сверх нормы {excess_pct:.1f}{excess_suffix}".replace(",", "."))
     return "\n".join(lines)
 
 
@@ -231,6 +249,7 @@ def build_report_messages_per_department(cfg: BotConfig) -> Tuple[str, str, List
         depts = get_departments(conn, week_start, week_end)
         missing = get_missing_by_department(conn, week_start, week_end)
         miscount = get_miscount_by_department(conn, week_start, week_end)
+        resort = get_resort_by_department(conn, week_start, week_end)
         top_neg_m = _top_neg_money_by_dept(conn, week_start, week_end, cfg.top_n)
         top_pos_m = _top_pos_money_by_dept(conn, week_start, week_end, cfg.top_n)
         top_neg_p = _top_pct_by_dept(conn, week_start, week_end, cfg.top_n, positive=False)
@@ -245,13 +264,15 @@ def build_report_messages_per_department(cfg: BotConfig) -> Tuple[str, str, List
             "─────────────────────",
             _block("📌 Несохранённые позиции:", missing.get(dept, [])),
             "",
-            _block("⚠️ Неверно посчитанные позиции:", miscount.get(dept, [])),
+            _block("⚠️ Неверно посчитанные позиции неделю назад:", miscount.get(dept, [])),
+            "",
+            _block("🔄 Позиции с пересортом:", resort.get(dept, [])),
             "",
             _block_top_money(top_neg_m.get(dept, []), "📉 ТОП недостач в деньгах:"),
             "",
             _block_top_money(top_pos_m.get(dept, []), "📈 ТОП излишков в деньгах:"),
             "",
-            _block_top_pct(top_neg_p.get(dept, []), "📉 ТОП недостач в %:"),
+            _block_top_pct(top_neg_p.get(dept, []), "📉 ТОП недостач в %:", excess_suffix="%"),
             "",
             _block_top_pct(top_pos_p.get(dept, []), "📈 ТОП излишков в %:"),
         ]
