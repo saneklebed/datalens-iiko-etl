@@ -281,9 +281,9 @@ def get_top_writeoffs_by_department(
             SELECT date_from AS week_start, date_to AS week_end, department, product_num
             FROM inventory_core.transactions_products
             WHERE date_from = %s AND date_to = %s
-              AND transaction_type = 'SESSION_WRITEOFF'
+              AND UPPER(TRIM(transaction_type)) = 'SESSION_WRITEOFF'
             GROUP BY date_from, date_to, department, product_num
-            HAVING COALESCE(sum(amount_out), 0) > 0
+            HAVING (COALESCE(sum(amount_out), 0) + COALESCE(sum(amount_in), 0)) > 0
         ),
         filtered AS (
             SELECT w.department, w.product_num, w.product_name, w.product_measure_unit,
