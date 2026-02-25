@@ -274,7 +274,7 @@ def build_report_messages_per_department(cfg: BotConfig) -> Tuple[str, str, List
             "",
             _block_top_pct(top_neg_p.get(dept, []), "📉 ТОП недостач в %:", excess_suffix="%"),
             "",
-            _block_top_pct(top_pos_p.get(dept, []), "📈 ТОП излишков в %:"),
+            _block_top_pct(top_pos_p.get(dept, []), "📈 ТОП излишков в %:", excess_suffix="%"),
         ]
         messages.append("\n".join(parts))
     return week_start, week_end, messages
