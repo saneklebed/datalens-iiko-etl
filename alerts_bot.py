@@ -239,12 +239,20 @@ def main() -> None:
     else:
         # Режим по умолчанию: один раз собрать отчёт и отправить в указанный чат
         from telegram import Bot
+        from telegram.error import ChatMigrated
 
         text = build_report_text(cfg)
         bot = Bot(token=cfg.telegram_token)
 
         async def send():
-            await bot.send_message(chat_id=cfg.allowed_chat_id, text=text)
+            try:
+                await bot.send_message(chat_id=cfg.allowed_chat_id, text=text)
+            except ChatMigrated as e:
+                # Группа переехала в супергруппу — новый chat_id
+                await bot.send_message(chat_id=e.new_chat_id, text=text)
+                print(
+                    f"Чат переехал в супергруппу. Обнови секрет TELEGRAM_CHAT_ID на: {e.new_chat_id}"
+                )
 
         asyncio.run(send())
 
