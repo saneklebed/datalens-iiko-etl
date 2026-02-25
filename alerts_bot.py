@@ -2,6 +2,7 @@ import asyncio
 import os
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Dict, List, Tuple
 
 import psycopg2
@@ -78,6 +79,12 @@ def get_last_week(conn) -> Tuple[str, str]:
     return str(row["week_start"]), str(row["week_end"])
 
 
+def week_end_to_display_end(week_end: str) -> str:
+    """Последний день недели в БД — невключающий; для отображения показываем -1 день."""
+    d = datetime.strptime(week_end, "%Y-%m-%d").date()
+    return (d - timedelta(days=1)).strftime("%Y-%m-%d")
+
+
 SEP = " | "
 
 
@@ -141,6 +148,7 @@ def get_resort_by_department(conn, week_start: str, week_end: str) -> Dict[str, 
 def _top_neg_money_by_dept(conn, week_start: str, week_end: str, top_n: int) -> Dict[str, List[dict]]:
     sql = """
         select department, product_name, deviation_money_signed,
+               coalesce(allowed_loss_money, 0) as norm,
                coalesce(excess_loss_money, 0) as excess
         from inventory_mart.weekly_deviation_products_money_v2
         where week_start = %s and week_end = %s and deviation_money_signed < 0
@@ -160,6 +168,7 @@ def _top_neg_money_by_dept(conn, week_start: str, week_end: str, top_n: int) -> 
 def _top_pos_money_by_dept(conn, week_start: str, week_end: str, top_n: int) -> Dict[str, List[dict]]:
     sql = """
         select department, product_name, deviation_money_signed,
+               coalesce(allowed_loss_money, 0) as norm,
                coalesce(excess_deviation_money, 0) as excess
         from inventory_mart.weekly_deviation_products_money_v2
         where week_start = %s and week_end = %s and deviation_money_signed > 0
@@ -181,7 +190,7 @@ def _top_pct_by_dept(
 ) -> Dict[str, List[dict]]:
     sign = ">" if positive else "<"
     sql = f"""
-        select department, product_name, fact_deviation_pct_qty, excess_pct_qty
+        select department, product_name, fact_deviation_pct_qty, norm_pct, excess_pct_qty
         from inventory_mart.weekly_deviation_products_qty
         where week_start = %s and week_end = %s and fact_deviation_pct_qty {sign} 0
           and (is_possible_resort is null or is_possible_resort = false)
@@ -223,22 +232,33 @@ def _block_top_money(rows: List[dict], title: str) -> str:
     for i, r in enumerate(rows, start=1):
         name = (r.get("product_name") or "").strip()
         dev = r.get("deviation_money_signed") or 0
+        norm = r.get("norm") or 0
         excess = r.get("excess") or 0
-        lines.append(f"  {i}. {name}{SEP}{dev:,.0f} ₽{SEP}сверх нормы {excess:,.0f} ₽".replace(",", " "))
+        lines.append(
+            f"  {i}. {name}{SEP}{dev:,.0f} ₽{SEP}норма {norm:,.0f} ₽{SEP}превышение нормы {excess:,.0f} ₽".replace(
+                ",", " "
+            )
+        )
     return "\n".join(lines)
 
 
-def _block_top_pct(rows: List[dict], title: str, excess_suffix: str = " п.п.") -> str:
+def _block_top_pct(rows: List[dict], title: str) -> str:
     if not rows:
         return f"{title}\n  нет позиций"
     lines = [title]
     for i, r in enumerate(rows, start=1):
         name = (r.get("product_name") or "").strip()
         dev = r.get("fact_deviation_pct_qty")
+        norm = r.get("norm_pct")
         excess = r.get("excess_pct_qty")
         dev_pct = (dev * 100) if dev is not None else 0
+        norm_pct = (norm * 100) if norm is not None else 0
         excess_pct = (excess * 100) if excess is not None else 0
-        lines.append(f"  {i}. {name}{SEP}{dev_pct:.1f}%{SEP}сверх нормы {excess_pct:.1f}{excess_suffix}".replace(",", "."))
+        lines.append(
+            f"  {i}. {name}{SEP}{dev_pct:.1f}%{SEP}норма {norm_pct:.1f}%{SEP}превышение нормы {excess_pct:.1f}%".replace(
+                ",", "."
+            )
+        )
     return "\n".join(lines)
 
 
@@ -255,10 +275,11 @@ def build_report_messages_per_department(cfg: BotConfig) -> Tuple[str, str, List
         top_neg_p = _top_pct_by_dept(conn, week_start, week_end, cfg.top_n, positive=False)
         top_pos_p = _top_pct_by_dept(conn, week_start, week_end, cfg.top_n, positive=True)
 
+    display_end = week_end_to_display_end(week_end)
     messages = []
     for dept in depts:
         parts = [
-            f"📅 Неделя {week_start} — {week_end}",
+            f"📅 Неделя {week_start} — {display_end}",
             "",
             f"🏪 {dept}",
             "─────────────────────",
@@ -272,19 +293,20 @@ def build_report_messages_per_department(cfg: BotConfig) -> Tuple[str, str, List
             "",
             _block_top_money(top_pos_m.get(dept, []), "📈 ТОП излишков в деньгах:"),
             "",
-            _block_top_pct(top_neg_p.get(dept, []), "📉 ТОП недостач в %:", excess_suffix="%"),
+            _block_top_pct(top_neg_p.get(dept, []), "📉 ТОП недостач в %:"),
             "",
-            _block_top_pct(top_pos_p.get(dept, []), "📈 ТОП излишков в %:", excess_suffix="%"),
+            _block_top_pct(top_pos_p.get(dept, []), "📈 ТОП излишков в %:"),
         ]
         messages.append("\n".join(parts))
     return week_start, week_end, messages
 
 
 def build_summary_message(week_start: str, week_end: str, summary: List[Tuple[str, float]]) -> str:
+    display_end = week_end_to_display_end(week_end)
     if not summary:
-        return f"📊 Сводка за {week_start} — {week_end}\nНет данных по филиалам."
+        return f"📊 Сводка за {week_start} — {display_end}\nНет данных по филиалам."
     lines = [
-        f"📊 Сводка за неделю {week_start} — {week_end}",
+        f"📊 Сводка за неделю {week_start} — {display_end}",
         "сумма недостач + излишков по филиалам:",
         "",
     ]
