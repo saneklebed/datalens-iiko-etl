@@ -620,14 +620,11 @@ def send_kvant_test_message(cfg: BotConfig, text: str) -> None:
         "Content-Type": "application/json",
     }
 
-    # Крайний срок: +30 часов от момента создания (по Москве)
+    # Крайний срок: +30 часов от момента создания (по Москве).
+    # API ругается на формат с таймзоной, поэтому шлём без смещения: "YYYY-MM-DD HH:MM:SS".
     now_msk = datetime.now(ZoneInfo("Europe/Moscow"))
     due_dt = now_msk + timedelta(hours=30)
-    # Kvant в примере использует формат вида "2026-03-03 17:00:00+03" (без минут в смещении)
-    due_at_str = due_dt.strftime("%Y-%m-%d %H:%M:%S%z")
-    if due_at_str.endswith("00"):
-        # "+0300" -> "+03"
-        due_at_str = due_at_str[:-2]
+    due_at_str = due_dt.strftime("%Y-%m-%d %H:%M:%S")
 
     payload = {
         "to_user_id": cfg.kvant_assignee_id,
