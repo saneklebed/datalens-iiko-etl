@@ -1,0 +1,3 @@
+# Тесты моста ЭДО ↔ iiko (запуск: pytest из корня репо или из edo_iiko_bridge)
+pytest>=7.0.0
+requests-mock>=1.11.0

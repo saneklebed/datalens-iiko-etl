@@ -11,6 +11,8 @@
 
 Дальше: создание/проведение прихода в iiko по данным УПД и сохранённому маппингу.
 
+**Альтернативный путь в iiko — EDI API:** в iiko есть системы EDI (Внешняя, Внутренняя, **Контур EDI**). Метод `PUT .../resto/api/edi/{ediSystem}/invoice` принимает накладную в формате **ediMessage** (XML) и создаёт отгрузку в iiko. Тогда мост: УПД из Диадока → преобразование в ediMessage → PUT invoice. Подробно: `docs/edo-iiko-iiko-edi-api.md`.
+
 ## Окружение и секреты
 
 Секреты храним в **GitHub Secrets**. Для iiko **новые не нужны** — используем те же, что и для ETL: `IIKO_BASE_URL`, `IIKO_LOGIN`, `IIKO_PASS_SHA1`, `IIKO_VERIFY_SSL`. Добавить в Secrets нужно только для Диадока.
@@ -24,8 +26,9 @@
 | `IIKO_LOGIN` | Логин iiko | уже есть |
 | `IIKO_PASS_SHA1` | SHA1-хэш пароля iiko | уже есть |
 | `IIKO_VERIFY_SSL` | Проверка SSL (0/1) | уже есть |
+| `IIKO_EDI_SYSTEM` | (опционально) GUID системы EDI для PUT invoice, например Контур EDI `947385b3-1f5f-1074-249a-ba09b8eb1d64` | при использовании EDI API |
 
-URL для REST iiko Server в коде собирается как `IIKO_BASE_URL + "/resto"`. В workflow переменные подставляются из секретов (см. `.github/workflows/edo-iiko-bridge.yml`).
+URL для REST iiko Server в коде собирается как `IIKO_BASE_URL + "/resto"`. EDI-методы: `.../resto/api/edi/{ediSystem}/...`. В workflow переменные подставляются из секретов (см. `.github/workflows/edo-iiko-bridge.yml`).
 
 ## Запуск
 
@@ -39,6 +42,23 @@ python -m edo_iiko_bridge.cli fetch-incoming
 
 **Из GitHub Actions** (ручной или по расписанию): вкладка Actions → workflow «EDI-Doc bridge» → Run workflow. Секреты берутся из настроек репозитория.
 
+## Тестирование
+
+Проверки разбиты по этапам; часть можно гонять без доступа к Диадоку и iiko.
+
+| Этап | Что проверяем | Как |
+|------|----------------|-----|
+| **Юнит-тесты (сейчас)** | Конфиг (обязательные/опциональные переменные), клиент Диадока (логика с замоканными HTTP) | `pip install -r edo_iiko_bridge/requirements-dev.txt` и `pytest edo_iiko_bridge/tests` из корня репо. Реальные API не вызываются. |
+| **Интеграция (позже)** | Реальный вызов Диадока и/или iiko | Отдельный сценарий или job в CI с тестовыми секретами (песочница Диадока, тестовая база iiko). Опционально. |
+| **Ручная проверка** | Полный сценарий «fetch-incoming → список документов» | Локально с `.env` или через GitHub Actions с настроенными секретами. |
+
+Сейчас в репо есть тесты в `edo_iiko_bridge/tests/`: конфиг и клиент Диадока с `requests_mock`. Запуск из корня репо:
+
+```bash
+pip install -r edo_iiko_bridge/requirements-dev.txt
+pytest edo_iiko_bridge/tests -v
+```
+
 ## Структура
 
 - `config.py` — загрузка настроек из env.
@@ -47,5 +67,6 @@ python -m edo_iiko_bridge.cli fetch-incoming
 - `mapping_store.py` — сохранение/загрузка сопоставлений (пока JSON-файл).
 - `cli.py` — точки входа для команд.
 - `parsers/` — разбор XML УПД (формат ФНС/Диадок).
+- `tests/` — юнит-тесты (config, diadoc client с моками).
 
 Документация по API: [Диадок](https://api-docs.diadoc.ru/), [iiko](https://api.iiko.ru/) (Server). По разбору партнёрского решения — `docs/edo-iiko-edidoc-reverse-summary.md`.
