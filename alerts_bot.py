@@ -86,6 +86,25 @@ def get_last_week(conn) -> Tuple[str, str]:
     return str(row["week_start"]), str(row["week_end"])
 
 
+def get_last_two_weeks(conn) -> List[Tuple[str, str]]:
+    """
+    Возвращает две последние недели (текущая и предыдущая) из витрины money:
+    [(week_start_текущая, week_end_текущая), (week_start_предыдущая, week_end_предыдущая)].
+    """
+    sql = """
+        select distinct week_start, week_end
+        from inventory_mart.weekly_deviation_products_money_v2
+        order by week_start desc
+        limit 2;
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql)
+        rows = cur.fetchall()
+    if len(rows) < 2:
+        raise RuntimeError("Недостаточно данных для сравнения двух недель в weekly_deviation_products_money_v2")
+    return [(str(r["week_start"]), str(r["week_end"])) for r in rows]
+
+
 def week_end_to_display_end(week_end: str) -> str:
     """Последний день недели в БД — невключающий; для отображения показываем -1 день."""
     d = datetime.strptime(week_end, "%Y-%m-%d").date()
@@ -669,6 +688,75 @@ def build_top2_shortages_description(cfg: BotConfig) -> Tuple[str, str]:
     return description, expected_result
 
 
+def build_top2_results_description(cfg: BotConfig) -> Tuple[str, str]:
+    """
+    Результаты по ТОП-2 недостач: сравниваем прошлую и текущую недели.
+    Для каждой позиции из ТОП-2 недостач прошлой недели смотрим, осталась ли она в ТОП-2
+    на текущей неделе (проблема тянется) или вышла из ТОПа (есть прогресс).
+    Возвращает (description, expected_result).
+    """
+    with db_connect(cfg) as conn:
+        weeks = get_last_two_weeks(conn)
+        (curr_start, curr_end), (prev_start, prev_end) = weeks[0], weeks[1]
+        prev_top = _top_neg_money_by_dept(conn, prev_start, prev_end, TOP_SHORTAGES_FOR_KVANT_TASK)
+        curr_top = _top_neg_money_by_dept(conn, curr_start, curr_end, TOP_SHORTAGES_FOR_KVANT_TASK)
+
+    prev_display_end = week_end_to_display_end(prev_end)
+    curr_display_end = week_end_to_display_end(curr_end)
+
+    lines = [
+        "Срез результатов по ТОП-2 недостач за две недели:",
+        "",
+        f"  прошлая неделя: {prev_start} — {prev_display_end}",
+        f"  текущая неделя: {curr_start} — {curr_display_end}",
+        "",
+        "Смотрим по каждому филиалу, что случилось с позициями из ТОП-2 недостач прошлой недели:",
+        "",
+    ]
+
+    for dept in sorted(prev_top.keys()):
+        rows_prev = prev_top.get(dept, []) or []
+        rows_curr = curr_top.get(dept, []) or []
+        if not rows_prev:
+            continue
+        lines.append(f"🏪 {dept}")
+        for r_prev in rows_prev:
+            name = (r_prev.get("product_name") or "").strip() or "—"
+            pnum = r_prev.get("product_num")
+            still_in_top = False
+            if pnum:
+                for r_cur in rows_curr:
+                    if r_cur.get("product_num") == pnum:
+                        still_in_top = True
+                        break
+            if still_in_top:
+                lines.append(
+                    f"  • {name}{SEP}позиция всё ещё в ТОП-2 недостач — требуется дополнительный контроль и доработка."
+                )
+            else:
+                lines.append(
+                    f"  • {name}{SEP}позиция вышла из ТОП-2 недостач — предварительно проблема решена (проверить по ежедневным инвентам)."
+                )
+        lines.append("")
+
+    lines.extend(
+        [
+            "─────────────────────",
+            "Что сделать:",
+            "1. По позициям, которые вышли из ТОП-2, убедиться по ежедневным инвентам и отчётам, что отклонения действительно стабилизировались.",
+            "2. По позициям, которые остались в ТОП-2, запланировать дополнительные действия: пересмотр ТК, усиление контроля, расширение ежедневного инвента.",
+            "",
+        ]
+    )
+
+    description = "\n".join(lines)
+    expected_result = (
+        "По позициям из ТОП-2 недостач прошлой недели: для вышедших из ТОПа подтверждено, что отклонения ушли и ситуация стабилизировалась; "
+        "для оставшихся в ТОП-2 определены и запущены дополнительные меры (проработки, корректировки ТК, усиленный контроль)."
+    )
+    return description, expected_result
+
+
 def build_summary_message(week_start: str, week_end: str, summary: List[Tuple[str, float]]) -> str:
     display_end = week_end_to_display_end(week_end)
     if not summary:
@@ -805,6 +893,54 @@ def send_kvant_top_shortages_task(cfg: BotConfig) -> None:
         print(f"[kvant] error sending task 'ТОП недостач': {e!r}")
 
 
+def send_kvant_top_shortages_results_task(cfg: BotConfig) -> None:
+    """
+    Создаёт третью задачу в Кванте: «Результаты по ТОП недостач» — сравнение прошлой и текущей недели
+    для позиций из ТОП-2 недостач, фиксация прогресса и оставшихся проблем.
+    """
+    if not cfg.kvant_api_key or not cfg.kvant_assignee_id:
+        return
+    description, expected_result = build_top2_results_description(cfg)
+    headers = {
+        "api-key": cfg.kvant_api_key,
+        "Content-Type": "application/json",
+    }
+    now_msk = datetime.now(ZoneInfo("Europe/Moscow"))
+    due_dt = now_msk + timedelta(days=5)
+    due_at_str = due_dt.strftime("%Y-%m-%d %H:%M:%S")
+    payload = {
+        "to_user_id": cfg.kvant_assignee_id,
+        "due_at": due_at_str,
+        "required_deadline": 0,
+        "type_id": 1,
+        "inputs_values": [
+            {"value": "Результаты по ТОП недостач", "task_input_id": 1},
+            {"value": description, "task_input_id": 2},
+            {"value": expected_result, "task_input_id": 3},
+        ],
+        "function_user_id": None,
+        "task_labels": None,
+        "relation_track_users": [{"id": cfg.kvant_assignee_id, "user_type": 1}],
+        "program_id": None,
+    }
+    try:
+        resp = requests.post(
+            KVANT_TASKS_STORE_URL,
+            json=payload,
+            headers=headers,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        print("[kvant] task 'Результаты по ТОП недостач' created successfully")
+    except requests.HTTPError as e:
+        resp = e.response
+        status = getattr(resp, "status_code", None)
+        body = getattr(resp, "text", "")
+        print(f"[kvant] http error (Результаты по ТОП недостач): status={status}, body={body!r}")
+    except Exception as e:
+        print(f"[kvant] error sending task 'Результаты по ТОП недостач': {e!r}")
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cfg: BotConfig = context.application.bot_data["cfg"]
     if update.effective_chat and update.effective_chat.id != cfg.allowed_chat_id:
@@ -864,12 +1000,14 @@ def main() -> None:
                 await bot.send_message(chat_id=chat_id, text=summary_text)
 
         asyncio.run(send())
-        # После отправки отчёта в Telegram — две задачи в Кванте (если настроены KVANT_*).
+        # После отправки отчёта в Telegram — три задачи в Кванте (если настроены KVANT_*).
         # 1) Ознакомиться с результатами инвент — полный отчёт (сводка + все филиалы).
         kvant_text = summary_text + "\n\n\n" + "\n\n\n".join(dept_messages)
         send_kvant_test_message(cfg, kvant_text)
         # 2) ТОП недостач — ТОП-2 по филиалам, проверка задублированных приходов, инструкция по ТК/ежедневному инвенту.
         send_kvant_top_shortages_task(cfg)
+        # 3) Результаты по ТОП-2 недостач — сравнение прошлой и текущей недели, фиксация прогресса.
+        send_kvant_top_shortages_results_task(cfg)
 
 
 if __name__ == "__main__":
