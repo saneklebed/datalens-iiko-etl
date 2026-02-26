@@ -26,6 +26,10 @@ jobs:
       # Режим работы бота: one-shot отправка отчёта
       ALERTS_MODE: "once"
 
+      # Kvant API
+      KVANT_API_KEY: ${{ secrets.KVANT_API_KEY }}
+      KVANT_ASSIGNEE_ID: ${{ secrets.KVANT_ASSIGNEE_ID }}
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4

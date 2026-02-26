@@ -10,6 +10,7 @@ from psycopg2.extras import DictCursor
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
+import requests
 
 
 @dataclass
@@ -23,6 +24,9 @@ class BotConfig:
     allowed_chat_id: int
 
     top_n: int = 5
+
+    kvant_api_key: Optional[str] = None
+    kvant_assignee_id: Optional[int] = None
 
 
 def _env(name: str) -> str:
@@ -50,6 +54,8 @@ def load_config() -> BotConfig:
         telegram_token=_env("TELEGRAM_BOT_TOKEN"),
         allowed_chat_id=int(_env("TELEGRAM_CHAT_ID")),
         top_n=_int_optional("ALERTS_TOP_N", 5),
+        kvant_api_key=os.getenv("KVANT_API_KEY"),
+        kvant_assignee_id=int(os.getenv("KVANT_ASSIGNEE_ID")) if os.getenv("KVANT_ASSIGNEE_ID") else None,
     )
 
 
@@ -86,6 +92,9 @@ def week_end_to_display_end(week_end: str) -> str:
 
 
 SEP = " | "
+
+# Kvant: endpoint для создания коммуникации (POST /tasks/store)
+KVANT_TASKS_STORE_URL = "https://platform.kvant.app/openapi/tasks/store"
 
 # Порог: приход считается «мелким» (дозаказ), если < 15% от недельного движения.
 RECEIPT_SMALL_PCT_OF_MOVEMENT = 0.15
@@ -599,6 +608,53 @@ def build_report_text(cfg: BotConfig) -> str:
     return "\n".join(parts)
 
 
+def send_kvant_test_message(cfg: BotConfig) -> None:
+    """Создаёт тестовую коммуникацию в Кванте, если заданы KVANT_API_KEY и KVANT_ASSIGNEE_ID."""
+    if not cfg.kvant_api_key or not cfg.kvant_assignee_id:
+        return
+
+    headers = {
+        "Authorization": f"Bearer {cfg.kvant_api_key}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "to_user_id": cfg.kvant_assignee_id,
+        "due_at": None,
+        "required_deadline": 0,
+        "type_id": 1,
+        "inputs_values": [
+            {
+                "value": "Тестовая коммуникация",
+                "task_input_id": 1,
+            }
+        ],
+        "function_user_id": None,
+        "task_labels": None,
+        "relation_track_users": [
+            {
+                "id": cfg.kvant_assignee_id,
+                "user_type": 1,
+            }
+        ],
+        "program_id": None,
+    }
+
+    try:
+        resp = requests.post(
+            KVANT_TASKS_STORE_URL,
+            json=payload,
+            headers=headers,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        print("[kvant] test communication created successfully")
+    except Exception as e:
+        # Логируем, но не роняем весь workflow
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        print(f"[kvant] error sending communication: {e!r}, status={status}")
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cfg: BotConfig = context.application.bot_data["cfg"]
     if update.effective_chat and update.effective_chat.id != cfg.allowed_chat_id:
@@ -658,6 +714,8 @@ def main() -> None:
                 await bot.send_message(chat_id=chat_id, text=summary_text)
 
         asyncio.run(send())
+        # После отправки отчёта в Telegram — тестовая коммуникация в Кванте (если настроены KVANT_*).
+        send_kvant_test_message(cfg)
 
 
 if __name__ == "__main__":
