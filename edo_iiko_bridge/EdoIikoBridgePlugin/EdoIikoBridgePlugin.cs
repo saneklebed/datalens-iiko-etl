@@ -23,7 +23,7 @@ namespace EdoIikoBridge.Plugin
                 {
                     try
                     {
-                        PluginContext.Operations.AddWarningMessage("Мост ЭДО ↔ iiko. Оболочка установлена — здесь будет работа с накладными из Диадока и сопоставление с iiko.");
+                        PluginContext.Operations.AddWarningMessage(this, "Мост ЭДО ↔ iiko. Оболочка установлена — здесь будет работа с накладными из Диадока и сопоставление с iiko.", null);
                     }
                     catch (Exception ex)
                     {
