@@ -1,0 +1,42 @@
+# Сборка плагина «ЭДО ↔ iiko» для iikoChain Office.
+# На другом ПК: скачать артефакт, распаковать в C:\Program Files\iiko\iikoChain\Office\Plugins\EdoIikoBridge — без VS и SDK.
+
+name: Build iikoChain plugin (ЭДО ↔ iiko)
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'edo_iiko_bridge/EdoIikoBridgePlugin/**'
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore edo_iiko_bridge/EdoIikoBridgePlugin/EdoIikoBridgePlugin.csproj
+
+      - name: Build Release
+        run: dotnet build edo_iiko_bridge/EdoIikoBridgePlugin/EdoIikoBridgePlugin.csproj -c Release --no-restore
+
+      - name: Prepare plugin folder
+        run: |
+          New-Item -ItemType Directory -Path plugin_out -Force
+          Copy-Item edo_iiko_bridge\EdoIikoBridgePlugin\bin\Release\EdoIikoBridge.Plugin.dll plugin_out\
+          Copy-Item edo_iiko_bridge\EdoIikoBridgePlugin\bin\Release\Manifest.xml plugin_out\
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EdoIikoBridge-Plugin
+          path: plugin_out/
+          retention-days: 90

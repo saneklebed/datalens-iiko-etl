@@ -72,3 +72,5 @@ pytest edo_iiko_bridge/tests -v
 - `tests/` — юнит-тесты (config, diadoc/iiko клиенты с моками, парсер УПД, mapping_store).
 
 Документация по API: [Диадок](https://api-docs.diadoc.ru/), [iiko](https://api.iiko.ru/) (Server). По разбору партнёрского решения — `docs/edo-iiko-edidoc-reverse-summary.md`.
+
+**Оболочка в iikoChain Office:** плагин добавляет кнопку «ЭДО ↔ iiko» в меню дополнений. Путь установки: `C:\Program Files\iiko\iikoChain\Office\Plugins`. Исходники и скрипт копирования: **`EdoIikoBridgePlugin/`**; описание и путь: **`iiko_chain_plugins_folder/`**.

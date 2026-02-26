@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Шаблон манифеста для плагина моста ЭДО ↔ iiko (iikoChain).
+     Скопировать в Manifest.xml и подставить свои значения.
+     Положить в папку плагина вместе с DLL в Plugins. -->
+<Manifest xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://www.w3.org/2001/XMLSchema ../Binaries/iiko/Manifest.xsd">
+  <FileName>EdoIikoBridge.Plugin.dll</FileName>
+  <TypeName>EdoIikoBridge.Plugin.EdoIikoBridgePlugin</TypeName>
+  <ApiVersion>V8</ApiVersion>
+  <LicenseModuleId>21005108</LicenseModuleId>
+</Manifest>
