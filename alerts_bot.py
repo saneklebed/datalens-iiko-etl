@@ -703,10 +703,8 @@ def send_kvant_test_message(cfg: BotConfig, text: str) -> None:
         "Content-Type": "application/json",
     }
 
-    # Крайний срок: +30 часов от момента создания (по Москве).
-    # API ругается на формат с таймзоной, поэтому шлём без смещения: "YYYY-MM-DD HH:MM:SS".
     now_msk = datetime.now(ZoneInfo("Europe/Moscow"))
-    due_dt = now_msk + timedelta(hours=30)
+    due_dt = now_msk + timedelta(days=5)
     due_at_str = due_dt.strftime("%Y-%m-%d %H:%M:%S")
 
     payload = {
@@ -772,7 +770,7 @@ def send_kvant_top_shortages_task(cfg: BotConfig) -> None:
         "Content-Type": "application/json",
     }
     now_msk = datetime.now(ZoneInfo("Europe/Moscow"))
-    due_dt = now_msk + timedelta(hours=30)
+    due_dt = now_msk + timedelta(days=5)
     due_at_str = due_dt.strftime("%Y-%m-%d %H:%M:%S")
     payload = {
         "to_user_id": cfg.kvant_assignee_id,
