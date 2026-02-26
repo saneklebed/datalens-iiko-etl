@@ -623,7 +623,11 @@ def send_kvant_test_message(cfg: BotConfig, text: str) -> None:
     # Крайний срок: +30 часов от момента создания (по Москве)
     now_msk = datetime.now(ZoneInfo("Europe/Moscow"))
     due_dt = now_msk + timedelta(hours=30)
-    due_at_str = due_dt.strftime("%Y-%m-%d %H:%M:%S%z")  # формат как в ответе Kvant, напр. 2026-03-03 17:00:00+0300
+    # Kvant в примере использует формат вида "2026-03-03 17:00:00+03" (без минут в смещении)
+    due_at_str = due_dt.strftime("%Y-%m-%d %H:%M:%S%z")
+    if due_at_str.endswith("00"):
+        # "+0300" -> "+03"
+        due_at_str = due_at_str[:-2]
 
     payload = {
         "to_user_id": cfg.kvant_assignee_id,
@@ -656,8 +660,13 @@ def send_kvant_test_message(cfg: BotConfig, text: str) -> None:
         )
         resp.raise_for_status()
         print("[kvant] communication created successfully")
+    except requests.HTTPError as e:
+        # Логируем тело ответа, чтобы понимать причину 4xx/5xx, но не роняем workflow
+        resp = e.response
+        status = getattr(resp, "status_code", None)
+        body = getattr(resp, "text", "")
+        print(f"[kvant] http error: status={status}, body={body!r}")
     except Exception as e:
-        # Логируем, но не роняем весь workflow
         status = getattr(getattr(e, "response", None), "status_code", None)
         print(f"[kvant] error sending communication: {e!r}, status={status}")
 
