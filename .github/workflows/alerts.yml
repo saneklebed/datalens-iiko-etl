@@ -1,7 +1,12 @@
 name: Inventory alerts to Telegram
 
 on:
+  # Ручной запуск из GitHub Actions
   workflow_dispatch: {}
+
+  # Автозапуск: каждый вторник в 12:00 по Москве (= 09:00 UTC)
+  schedule:
+    - cron: "0 9 * * TUE"
 
 jobs:
   send-alerts:
