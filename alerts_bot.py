@@ -614,7 +614,8 @@ def send_kvant_test_message(cfg: BotConfig) -> None:
         return
 
     headers = {
-        "Authorization": f"Bearer {cfg.kvant_api_key}",
+        # Kvant API: api-key в header (apiKey auth)
+        "api-key": cfg.kvant_api_key,
         "Content-Type": "application/json",
     }
 
