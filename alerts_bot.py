@@ -586,6 +586,89 @@ def build_report_messages_per_department(cfg: BotConfig) -> Tuple[str, str, List
     return week_start, week_end, messages
 
 
+# ТОП недостач для второй задачи в Кванте (проверка приходов + инструкция по ТК/ежедневному инвенту)
+TOP_SHORTAGES_FOR_KVANT_TASK = 2
+
+
+def build_top2_shortages_description(cfg: BotConfig) -> Tuple[str, str]:
+    """
+    Формирует описание и ожидаемый результат для второй задачи Кванта «ТОП недостач».
+    Возвращает (description, expected_result).
+    """
+    with db_connect(cfg) as conn:
+        week_start, week_end = get_last_week(conn)
+        depts = get_departments(conn, week_start, week_end)
+        top_neg = _top_neg_money_by_dept(conn, week_start, week_end, TOP_SHORTAGES_FOR_KVANT_TASK)
+        receipts_by_dept = {}
+        movement_by_dept = {}
+        for dept in depts:
+            rows = top_neg.get(dept, [])
+            product_nums = [r["product_num"] for r in rows if r.get("product_num")]
+            receipts_by_dept[dept] = get_receipts_for_products(
+                conn, week_start, week_end, dept, product_nums
+            ) if product_nums else {}
+            movement_by_dept[dept] = get_movement_qty_for_products(
+                conn, week_start, week_end, dept, product_nums
+            ) if product_nums else {}
+
+    display_end = week_end_to_display_end(week_end)
+    lines = [
+        f"Неделя {week_start} — {display_end}",
+        "",
+        "ТОП-2 недостач по филиалам (название | недостача ₽ | норма | превышение нормы):",
+        "",
+    ]
+    for dept in depts:
+        rows = top_neg.get(dept, [])
+        receipts = receipts_by_dept.get(dept, {})
+        movement = movement_by_dept.get(dept, {})
+        lines.append(f"🏪 {dept}")
+        if not rows:
+            lines.append("  нет позиций")
+        else:
+            for i, r in enumerate(rows, start=1):
+                name = (r.get("product_name") or "").strip() or "—"
+                dev = r.get("deviation_money_signed") or 0
+                norm = r.get("norm") or 0
+                excess = r.get("excess") or 0
+                lines.append(
+                    f"  {i}. {name}{SEP}{dev:,.0f} ₽{SEP}норма {norm:,.0f} ₽{SEP}превышение нормы {excess:,.0f} ₽".replace(
+                        ",", " "
+                    )
+                )
+        # Проверка задублированных приходов по ТОП-2 этого филиала
+        duplicate_names = []
+        for r in rows:
+            pnum = r.get("product_num")
+            name = (r.get("product_name") or "").strip() or "—"
+            recs = receipts.get(pnum, []) if pnum else []
+            mov = movement.get(pnum) if pnum else None
+            if _is_possible_duplicate_receipt(recs, mov or 0, name):
+                duplicate_names.append(name)
+        if duplicate_names:
+            for name in duplicate_names:
+                lines.append(f"  ⚠️ По товару «{name}» есть задублированный приход.")
+        else:
+            lines.append("  ✅ Задублированных приходов нет.")
+        lines.append("")
+
+    lines.extend([
+        "─────────────────────",
+        "Что сделать:",
+        "1. Проверить корректность ТК (технологических карт) по указанным позициям — провести проработки.",
+        "2. Если проработки показали, что ТК корректны — ввести ежедневный инвент по этим позициям для мониторинга.",
+        "3. Если ТК были некорректны — исправить ТК и не вводить ежедневный инвент; мониторить результат на еженедельных инвентаризациях.",
+        "",
+    ])
+
+    description = "\n".join(lines)
+    expected_result = (
+        "При некорректных ТК: проведены проработки и внесены исправления в ТК, мониторинг на еженедельных инвентаризациях. "
+        "При корректных ТК: введены ежедневные инвенты для мониторинга по позициям."
+    )
+    return description, expected_result
+
+
 def build_summary_message(week_start: str, week_end: str, summary: List[Tuple[str, float]]) -> str:
     display_end = week_end_to_display_end(week_end)
     if not summary:
@@ -679,6 +762,51 @@ def send_kvant_test_message(cfg: BotConfig, text: str) -> None:
         print(f"[kvant] error sending communication: {e!r}, status={status}")
 
 
+def send_kvant_top_shortages_task(cfg: BotConfig) -> None:
+    """Создаёт вторую задачу в Кванте: «ТОП недостач» — ТОП-2 по филиалам, проверка приходов, инструкция по ТК и ежедневному инвенту."""
+    if not cfg.kvant_api_key or not cfg.kvant_assignee_id:
+        return
+    description, expected_result = build_top2_shortages_description(cfg)
+    headers = {
+        "api-key": cfg.kvant_api_key,
+        "Content-Type": "application/json",
+    }
+    now_msk = datetime.now(ZoneInfo("Europe/Moscow"))
+    due_dt = now_msk + timedelta(hours=30)
+    due_at_str = due_dt.strftime("%Y-%m-%d %H:%M:%S")
+    payload = {
+        "to_user_id": cfg.kvant_assignee_id,
+        "due_at": due_at_str,
+        "required_deadline": 0,
+        "type_id": 1,
+        "inputs_values": [
+            {"value": "ТОП недостач", "task_input_id": 1},
+            {"value": description, "task_input_id": 2},
+            {"value": expected_result, "task_input_id": 3},
+        ],
+        "function_user_id": None,
+        "task_labels": None,
+        "relation_track_users": [{"id": cfg.kvant_assignee_id, "user_type": 1}],
+        "program_id": None,
+    }
+    try:
+        resp = requests.post(
+            KVANT_TASKS_STORE_URL,
+            json=payload,
+            headers=headers,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        print("[kvant] task 'ТОП недостач' created successfully")
+    except requests.HTTPError as e:
+        resp = e.response
+        status = getattr(resp, "status_code", None)
+        body = getattr(resp, "text", "")
+        print(f"[kvant] http error (ТОП недостач): status={status}, body={body!r}")
+    except Exception as e:
+        print(f"[kvant] error sending task 'ТОП недостач': {e!r}")
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cfg: BotConfig = context.application.bot_data["cfg"]
     if update.effective_chat and update.effective_chat.id != cfg.allowed_chat_id:
@@ -738,10 +866,12 @@ def main() -> None:
                 await bot.send_message(chat_id=chat_id, text=summary_text)
 
         asyncio.run(send())
-        # После отправки отчёта в Telegram — коммуникация в Кванте (если настроены KVANT_*).
-        # В Квант уходит общий текст: сводка + все филиалы.
+        # После отправки отчёта в Telegram — две задачи в Кванте (если настроены KVANT_*).
+        # 1) Ознакомиться с результатами инвент — полный отчёт (сводка + все филиалы).
         kvant_text = summary_text + "\n\n\n" + "\n\n\n".join(dept_messages)
         send_kvant_test_message(cfg, kvant_text)
+        # 2) ТОП недостач — ТОП-2 по филиалам, проверка задублированных приходов, инструкция по ТК/ежедневному инвенту.
+        send_kvant_top_shortages_task(cfg)
 
 
 if __name__ == "__main__":
