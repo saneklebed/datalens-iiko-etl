@@ -19,7 +19,7 @@ namespace EdoIikoBridge.Plugin
 
             _menuButtonSubscription = PluginContext.Operations.AddButtonToPluginsMenu(
                 "ЭДО ↔ iiko",
-                (vm, printer) =>
+                _ =>
                 {
                     try
                     {
