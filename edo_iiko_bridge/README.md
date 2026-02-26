@@ -38,6 +38,8 @@ URL для REST iiko Server в коде собирается как `IIKO_BASE_U
 pip install -r requirements.txt
 # задай переменные окружения или положи .env (не в репо)
 python -m edo_iiko_bridge.cli fetch-incoming
+python -m edo_iiko_bridge.cli fetch-document <messageId> <entityId>   # скачать УПД и вывести строки (наименование, артикул, единица, кол-во, цена, сумма)
+python -m edo_iiko_bridge.cli list-products   # номенклатура iiko (id, название, артикул) для сопоставления
 ```
 
 **Из GitHub Actions** (ручной или по расписанию): вкладка Actions → workflow «EDI-Doc bridge» → Run workflow. Секреты берутся из настроек репозитория.
@@ -63,10 +65,10 @@ pytest edo_iiko_bridge/tests -v
 
 - `config.py` — загрузка настроек из env.
 - `clients/diadoc_client.py` — клиент API Диадока.
-- `clients/iiko_resto_client.py` — клиент REST iiko Server (resto).
-- `mapping_store.py` — сохранение/загрузка сопоставлений (пока JSON-файл).
+- `clients/iiko_resto_client.py` — клиент REST iiko Server (авторизация как в ETL, метод get_products для номенклатуры).
+- `mapping_store.py` — загрузка/сохранение сопоставлений «строка УПД ↔ товар iiko» (JSON: documentKey, lineNumber, productCodeEdo, iikoProductId, iikoArticul).
 - `cli.py` — точки входа для команд.
-- `parsers/` — разбор XML УПД (формат ФНС/Диадок).
-- `tests/` — юнит-тесты (config, diadoc client с моками).
+- `parsers/` — разбор XML УПД (формат ФНС 5.02/5.03): извлечение строк товаров (наименование, количество, цена, сумма).
+- `tests/` — юнит-тесты (config, diadoc/iiko клиенты с моками, парсер УПД, mapping_store).
 
 Документация по API: [Диадок](https://api-docs.diadoc.ru/), [iiko](https://api.iiko.ru/) (Server). По разбору партнёрского решения — `docs/edo-iiko-edidoc-reverse-summary.md`.

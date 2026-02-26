@@ -79,3 +79,17 @@ def test_get_incoming_documents_with_explicit_box_id(client, requests_mock):
     get_docs = requests_mock.request_history[1]
     assert "GetDocuments" in get_docs.url
     assert "boxId=" in get_docs.url
+
+
+def test_get_entity_content_returns_bytes(client, requests_mock):
+    requests_mock.post(f"{DIADOC_API_BASE}/V3/Authenticate", text="token")
+    xml_body = b'<?xml version="1.0"?><root><item><name>Product</name><qty>1</qty></item></root>'
+    requests_mock.get(
+        f"{DIADOC_API_BASE}/V4/GetEntityContent",
+        content=xml_body,
+    )
+    content = client.get_entity_content("box@diadoc.ru", "msg-1", "ent-1")
+    assert content == xml_body
+    req = requests_mock.request_history[1]
+    assert "GetEntityContent" in req.url
+    assert "messageId=msg-1" in req.url or "messageId=msg%2D1" in req.url

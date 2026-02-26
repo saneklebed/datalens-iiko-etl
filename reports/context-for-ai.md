@@ -6,6 +6,22 @@
 
 ---
 
+## 16.02.2025 — мост ЭДО ↔ iiko + интеграция с Kvant API (рабочий ПК)
+
+**Мост ЭДО ↔ iiko** (`edo_iiko_bridge/`):
+- Диадок: DiadocClient (auth, GetMyOrganizations, GetDocuments, GetEntityContent). CLI: fetch-incoming, fetch-document &lt;messageId&gt; &lt;entityId&gt;.
+- УПД: парсер XML (артикул, единица измерения, название, кол-во, цена, сумма). Парсер в `parsers/upd.py`.
+- iiko Resto: IikoRestoClient (auth как в ETL), get_products(). CLI: list-products.
+- Маппинг: mapping_store (load/save, find_mapping_for_line). Workflow `edo-iiko-bridge.yml`: тесты при push/PR, ручной запуск — test + fetch-incoming. Документация: `docs/edo-iiko-iiko-edi-api.md`.
+
+**Kvant API** (`alerts_bot.py` + `docs/kvant-integration.md`):
+- Подключение к Кванту по API: `POST https://platform.kvant.app/openapi/tasks/store`, заголовок `api-key`. Секреты: KVANT_API_KEY, KVANT_ASSIGNEE_ID (в `alerts.yml`).
+- После рассылки отчёта в Telegram создаются **три задачи в Кванте**: 1) коммуникация «Ознакомиться с результатами инвент» (текст отчёта); 2) задача «ТОП недостач» (ТОП-2 по филиалам, проверка приходов, инструкция по ТК/ежедневному инвенту, срок 5 дней); 3) задача «Результаты по ТОП недостач» (сравнение недель, фиксация прогресса, срок 24 ч).
+
+**Что делать с домашнего ПК:** вытянуть репо, дописать `reports/2025-02-16.md` блоком «С домашнего ПК». **Визуал в iiko:** воспроизвести интерфейс (папки Plugins и т.д.), пункт в меню, на который можно тыкать — точка входа для моста ЭДО ↔ iiko.
+
+---
+
 ## 24.02.2026
 
 **Neon / миграции:**

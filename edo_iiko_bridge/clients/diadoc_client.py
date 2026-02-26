@@ -100,5 +100,14 @@ class DiadocClient:
         )
         return data.get("Documents") or []
 
+    def get_entity_content(self, box_id: str, message_id: str, entity_id: str) -> bytes:
+        """Содержимое сущности документа (GET /V4/GetEntityContent). Возвращает сырые байты (обычно XML)."""
+        url = f"{DIADOC_API_BASE}/V4/GetEntityContent"
+        params = {"boxId": box_id, "messageId": message_id, "entityId": entity_id}
+        headers = self._auth_header()
+        resp = self._session.get(url, params=params, headers=headers, timeout=60)
+        resp.raise_for_status()
+        return resp.content
+
 
 __all__ = ["DiadocClient", "DIADOC_API_BASE"]
