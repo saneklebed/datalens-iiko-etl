@@ -1,4 +1,5 @@
 using System;
+using Resto.Front.Api;
 using Resto.Front.Api.Attributes;
 
 namespace EdoIikoBridge.Plugin
