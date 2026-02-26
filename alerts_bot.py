@@ -608,8 +608,8 @@ def build_report_text(cfg: BotConfig) -> str:
     return "\n".join(parts)
 
 
-def send_kvant_test_message(cfg: BotConfig) -> None:
-    """Создаёт тестовую коммуникацию в Кванте, если заданы KVANT_API_KEY и KVANT_ASSIGNEE_ID."""
+def send_kvant_test_message(cfg: BotConfig, text: str) -> None:
+    """Создаёт коммуникацию в Кванте с переданным текстом (если заданы KVANT_API_KEY и KVANT_ASSIGNEE_ID)."""
     if not cfg.kvant_api_key or not cfg.kvant_assignee_id:
         return
 
@@ -626,7 +626,7 @@ def send_kvant_test_message(cfg: BotConfig) -> None:
         "type_id": 1,
         "inputs_values": [
             {
-                "value": "Тестовая коммуникация",
+                "value": text,
                 "task_input_id": 1,
             }
         ],
@@ -649,7 +649,7 @@ def send_kvant_test_message(cfg: BotConfig) -> None:
             timeout=10,
         )
         resp.raise_for_status()
-        print("[kvant] test communication created successfully")
+        print("[kvant] communication created successfully")
     except Exception as e:
         # Логируем, но не роняем весь workflow
         status = getattr(getattr(e, "response", None), "status_code", None)
@@ -715,8 +715,10 @@ def main() -> None:
                 await bot.send_message(chat_id=chat_id, text=summary_text)
 
         asyncio.run(send())
-        # После отправки отчёта в Telegram — тестовая коммуникация в Кванте (если настроены KVANT_*).
-        send_kvant_test_message(cfg)
+        # После отправки отчёта в Telegram — коммуникация в Кванте (если настроены KVANT_*).
+        # В Квант уходит общий текст: сводка + все филиалы.
+        kvant_text = summary_text + "\n\n\n" + "\n\n\n".join(dept_messages)
+        send_kvant_test_message(cfg, kvant_text)
 
 
 if __name__ == "__main__":
