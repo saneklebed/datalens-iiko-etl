@@ -30,9 +30,11 @@ jobs:
 
       - name: Prepare plugin folder
         run: |
+          $out = "edo_iiko_bridge/EdoIikoBridgePlugin/bin/Release"
+          if (Test-Path "$out/net472") { $out = "$out/net472" }
           New-Item -ItemType Directory -Path plugin_out -Force
-          Copy-Item edo_iiko_bridge\EdoIikoBridgePlugin\bin\Release\EdoIikoBridge.Plugin.dll plugin_out\
-          Copy-Item edo_iiko_bridge\EdoIikoBridgePlugin\bin\Release\Manifest.xml plugin_out\
+          Copy-Item "$out/EdoIikoBridge.Plugin.dll" plugin_out\
+          Copy-Item "$out/Manifest.xml" plugin_out\
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
