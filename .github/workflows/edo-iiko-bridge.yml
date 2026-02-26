@@ -1,0 +1,38 @@
+# Мост ЭДО ↔ iiko: запуск из репо с секретами из GitHub Secrets
+name: EDI-Doc bridge (ЭДО ↔ iiko)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  run-bridge:
+    runs-on: ubuntu-latest
+
+    env:
+      # Диадок — добавить в Secrets репо
+      DIADOC_API_KEY: ${{ secrets.DIADOC_API_KEY }}
+      DIADOC_LOGIN: ${{ secrets.DIADOC_LOGIN }}
+      DIADOC_PASSWORD: ${{ secrets.DIADOC_PASSWORD }}
+      # iiko — те же секреты, что и для ETL (уже есть в репо)
+      IIKO_BASE_URL: ${{ secrets.IIKO_BASE_URL }}
+      IIKO_LOGIN: ${{ secrets.IIKO_LOGIN }}
+      IIKO_PASS_SHA1: ${{ secrets.IIKO_PASS_SHA1 }}
+      IIKO_VERIFY_SSL: ${{ secrets.IIKO_VERIFY_SSL }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r edo_iiko_bridge/requirements.txt
+
+      - name: Run bridge (fetch incoming)
+        run: python -m edo_iiko_bridge.cli fetch-incoming
+        continue-on-error: true
