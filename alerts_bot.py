@@ -633,9 +633,20 @@ def send_kvant_test_message(cfg: BotConfig, text: str) -> None:
         "type_id": 1,
         "inputs_values": [
             {
+                # Название коммуникации
+                "value": "Ознакомиться с результатами инвент",
+                "task_input_id": 1,  # Название
+            },
+            {
+                # Описание задачи — полный текст отчёта бота
                 "value": text,
-                "task_input_id": 1,
-            }
+                "task_input_id": 2,  # Описание
+            },
+            {
+                # Ожидаемый конечный результат
+                "value": "С информацией ознакомлен",
+                "task_input_id": 3,  # Ожидаемый результат
+            },
         ],
         "function_user_id": None,
         "task_labels": None,
