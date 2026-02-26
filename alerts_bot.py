@@ -277,6 +277,25 @@ def get_movement_qty_for_products(
         }
 
 
+def get_deviation_for_products(
+    conn, week_start: str, week_end: str, department: str, product_nums: List[str]
+) -> Dict[str, float]:
+    """Отклонение в деньгах по товарам за неделю (любое, не только ТОП)."""
+    if not product_nums:
+        return {}
+    sql = """
+        select product_num, deviation_money_signed
+        from inventory_mart.weekly_deviation_products_money_v2
+        where week_start = %s and week_end = %s and department = %s and product_num = ANY(%s);
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql, (week_start, week_end, department, product_nums))
+        return {
+            r["product_num"]: float(r["deviation_money_signed"] or 0)
+            for r in cur.fetchall()
+        }
+
+
 def get_top_writeoffs_by_department(
     conn,
     week_start: str,
@@ -700,6 +719,12 @@ def build_top2_results_description(cfg: BotConfig) -> Tuple[str, str]:
         (curr_start, curr_end), (prev_start, prev_end) = weeks[0], weeks[1]
         prev_top = _top_neg_money_by_dept(conn, prev_start, prev_end, TOP_SHORTAGES_FOR_KVANT_TASK)
         curr_top = _top_neg_money_by_dept(conn, curr_start, curr_end, TOP_SHORTAGES_FOR_KVANT_TASK)
+        curr_dev_by_dept: Dict[str, Dict[str, float]] = {}
+        for dept, rows_prev in prev_top.items():
+            product_nums = [r.get("product_num") for r in rows_prev if r.get("product_num")]
+            curr_dev_by_dept[dept] = get_deviation_for_products(
+                conn, curr_start, curr_end, dept, product_nums
+            ) if product_nums else {}
 
     prev_display_end = week_end_to_display_end(prev_end)
     curr_display_end = week_end_to_display_end(curr_end)
@@ -714,6 +739,8 @@ def build_top2_results_description(cfg: BotConfig) -> Tuple[str, str]:
         "",
     ]
 
+    improved_total = 0
+
     for dept in sorted(prev_top.keys()):
         rows_prev = prev_top.get(dept, []) or []
         rows_curr = curr_top.get(dept, []) or []
@@ -723,6 +750,8 @@ def build_top2_results_description(cfg: BotConfig) -> Tuple[str, str]:
         for r_prev in rows_prev:
             name = (r_prev.get("product_name") or "").strip() or "—"
             pnum = r_prev.get("product_num")
+            prev_dev = float(r_prev.get("deviation_money_signed") or 0)
+            curr_dev = float(curr_dev_by_dept.get(dept, {}).get(pnum, 0.0)) if pnum else 0.0
             still_in_top = False
             if pnum:
                 for r_cur in rows_curr:
@@ -731,13 +760,34 @@ def build_top2_results_description(cfg: BotConfig) -> Tuple[str, str]:
                         break
             if still_in_top:
                 lines.append(
-                    f"  • {name}{SEP}позиция всё ещё в ТОП-2 недостач — требуется дополнительный контроль и доработка."
+                    f"  • {name}{SEP}прошлая неделя {prev_dev:,.0f} ₽{SEP}текущая неделя {curr_dev:,.0f} ₽{SEP}позиция всё ещё в ТОП-2 недостач — требуется дополнительный контроль и доработка.".replace(
+                        ",", " "
+                    )
                 )
             else:
+                improved = abs(curr_dev) < abs(prev_dev)
+                if improved:
+                    improved_total += 1
+                prefix = "🔥 " if improved else ""
+                comment = (
+                    "позиция вышла из ТОП-2 недостач — прогресс, так держать!"
+                    if improved
+                    else "позиция вышла из ТОП-2 недостач."
+                )
                 lines.append(
-                    f"  • {name}{SEP}позиция вышла из ТОП-2 недостач — предварительно проблема решена (проверить по ежедневным инвентам)."
+                    f"  • {prefix}{name}{SEP}прошлая неделя {prev_dev:,.0f} ₽{SEP}текущая неделя {curr_dev:,.0f} ₽{SEP}{comment}".replace(
+                        ",", " "
+                    )
                 )
         lines.append("")
+
+    if improved_total > 0:
+        lines.extend(
+            [
+                f"🔥 Итог: {improved_total} позиций вышли из ТОП-2 недостач с улучшением показателей — ты молодчина, продолжай в том же духе!",
+                "",
+            ]
+        )
 
     lines.extend(
         [
@@ -792,7 +842,8 @@ def send_kvant_test_message(cfg: BotConfig, text: str) -> None:
     }
 
     now_msk = datetime.now(ZoneInfo("Europe/Moscow"))
-    due_dt = now_msk + timedelta(days=5)
+    # Информативная задача «Ознакомиться…» — крайний срок 24 часа.
+    due_dt = now_msk + timedelta(days=1)
     due_at_str = due_dt.strftime("%Y-%m-%d %H:%M:%S")
 
     payload = {
@@ -906,7 +957,8 @@ def send_kvant_top_shortages_results_task(cfg: BotConfig) -> None:
         "Content-Type": "application/json",
     }
     now_msk = datetime.now(ZoneInfo("Europe/Moscow"))
-    due_dt = now_msk + timedelta(days=5)
+    # Задача «Результаты по ТОП недостач» — крайний срок 24 часа.
+    due_dt = now_msk + timedelta(days=1)
     due_at_str = due_dt.strftime("%Y-%m-%d %H:%M:%S")
     payload = {
         "to_user_id": cfg.kvant_assignee_id,
