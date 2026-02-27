@@ -27,6 +27,12 @@
 dotnet build edo_iiko_bridge\RoomBroomChainPlugin\RoomBroomChainPlugin.csproj -c Release
 ```
 
+## Настройки (как сохраняются)
+
+- Вкладка `Настройки` сохраняет значения в локальные настройки пользователя iikoChain (**`SettingsMain`**, JSON).
+- Это нужно, чтобы вкладка `Документы` могла читать креды Диадока без повторного ввода.
+- Реализация: `edo_iiko_bridge/RoomBroomChainPlugin/Config/ConfigStore.cs` + `Config/RoomBroomSettings.cs` + `Config/RoomBroomConfig.cs`.
+
 ## Собрать ZIP “распаковать и работает”
 
 Запусти (PowerShell):

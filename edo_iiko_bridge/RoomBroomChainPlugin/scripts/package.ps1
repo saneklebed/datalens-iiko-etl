@@ -8,31 +8,39 @@ $ErrorActionPreference = "Stop"
 
 $projDir = Resolve-Path (Join-Path $PSScriptRoot "..")
 $proj = Join-Path $projDir "RoomBroomChainPlugin.csproj"
+$dll = Join-Path $projDir "bin\\$Configuration\\RoomBroomChainPlugin.dll"
 
 if ([string]::IsNullOrWhiteSpace($OutDir)) {
   $OutDir = Join-Path $projDir "dist"
 }
 
+$canBuild = $true
 if ([string]::IsNullOrWhiteSpace($IikoChainLibDir)) {
   $props = Join-Path $projDir "Directory.Build.props"
   if (-not (Test-Path $props)) {
-    Write-Host "Не найден Directory.Build.props." -ForegroundColor Yellow
-    Write-Host "Скопируй Directory.Build.props.example -> Directory.Build.props и укажи IikoChainLibDir" -ForegroundColor Yellow
-    Write-Host "Либо передай параметр: -IikoChainLibDir `"C:\Program Files\iiko\iikoChain\Office`"" -ForegroundColor Yellow
-    exit 1
+    $canBuild = $false
   }
 }
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
-Write-Host "Building plugin..." -ForegroundColor Cyan
-if ([string]::IsNullOrWhiteSpace($IikoChainLibDir)) {
-  dotnet build $proj -c $Configuration | Out-Host
+if ($canBuild) {
+  Write-Host "Building plugin..." -ForegroundColor Cyan
+  if ([string]::IsNullOrWhiteSpace($IikoChainLibDir)) {
+    dotnet build $proj -c $Configuration | Out-Host
+  } else {
+    dotnet build $proj -c $Configuration "/p:IikoChainLibDir=$IikoChainLibDir" | Out-Host
+  }
 } else {
-  dotnet build $proj -c $Configuration "/p:IikoChainLibDir=$IikoChainLibDir" | Out-Host
+  if (-not (Test-Path $dll)) {
+    Write-Host "Не найден Directory.Build.props и не найден DLL для упаковки." -ForegroundColor Yellow
+    Write-Host "Скопируй Directory.Build.props.example -> Directory.Build.props и укажи IikoChainLibDir" -ForegroundColor Yellow
+    Write-Host "Либо передай параметр: -IikoChainLibDir `"C:\Program Files\iiko\iikoChain\Office`"" -ForegroundColor Yellow
+    exit 1
+  }
+  Write-Host "Skipping build: pack existing DLL ($dll)" -ForegroundColor Yellow
 }
 
-$dll = Join-Path $projDir "bin\$Configuration\RoomBroomChainPlugin.dll"
 if (-not (Test-Path $dll)) {
   throw "Не найден DLL после сборки: $dll"
 }
