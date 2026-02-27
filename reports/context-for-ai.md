@@ -20,6 +20,17 @@
 
 **Что делать с домашнего ПК:** вытянуть репо, дописать `reports/2025-02-16.md` блоком «С домашнего ПК». **Визуал в iiko:** воспроизвести интерфейс (папки Plugins и т.д.), пункт в меню, на который можно тыкать — точка входа для моста ЭДО ↔ iiko.
 
+**Нарыто в DLL (ILSpy) по EDI-Doc 3.02 — как появляется вкладка/меню:**
+- Вкладка/пункт меню **создаётся кодом внутри DLL**, не конфигом iikoOffice.
+- В `Diadoc.dll` найден класс **`DiadocNS.ITSPlugin : INavBarPlugin, IPlugin`**:
+  - `MenuName = "EDI-Doc 3.02"`, `Version = "3.02"`.
+  - Свойство `MenuGroup` возвращает группу меню с двумя пунктами (две вкладки): **`TabPageFirst`** и **`TabPageSecond`** (через `new MenuItem((ITabPage)new TabPageFirst(), MenuName)` и аналогично для Second).
+  - Путь к папке плагина/логам формируется как: `AppDomain.CurrentDomain.BaseDirectory + "Plugins\\\\" + MenuName + "\\\\"` → ожидается папка `...\\Office\\Plugins\\EDI-Doc 3.02\\`.
+- `PageFirst : XtraUserControl` (DevExpress) — основной UI, табы: **Черновики / Контрагенты / Входящие / Накладная**.
+- Настройки хранятся в `Settings.Default.SettingsMain` как JSON (`ConfigCL` через `JsonConvert.DeserializeObject`), меняются и сохраняются через `Settings.Default.Save()`.
+- Подключение к iiko берётся из `Resto.BackApi.Core.RestApi.RestApiClient.CurrentSessionAuthData` (serverUrl/login + PasswordHash/PasswordSha1Hash через reflection), далее используются `ServerApi` и `IikoHiddenApi`.
+- Создание накладной в iiko реализовано в `CreateiikoInvoice()` через `ServerApi.Download_Invoice(Download_inv_Document)`; сопоставления и связь адрес→склад сохраняются в iiko через `IikoHiddenApi.SaveOrUpdateAnnouncements(...)` (JSON `CompareNews`/`CompareiikoPos`).
+
 **Уточнение (iikoChain):** целевая система для оболочки — **iikoChain Office**, не iikoFront. Цель — пункт в **левой навигации** Chain (как у EDI-Doc 3.02: «EDI-Doc 3.02» → Документы, Настройки). Текущий плагин на Resto.Front.Api даёт только кнопку в меню дополнений (экран доп. операций), в навигацию Chain не попадает. Для пункта в навигации нужен API расширения Chain Office — в открытой документации нет; уточнять у iiko/партнёров.
 
 ---

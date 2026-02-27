@@ -98,6 +98,36 @@
 
 ---
 
+## 4.1. Что нашли в DLL через ILSpy (как появляется вкладка «EDI-Doc 3.02»)
+
+Ключевое: **пункт меню/вкладка создаётся самим плагином внутри DLL**, а не через внешний конфиг iikoOffice.
+
+В `Diadoc.dll` найден класс:
+
+- **`DiadocNS.ITSPlugin : INavBarPlugin, IPlugin`**
+  - `MenuName = "EDI-Doc 3.02"`, `Version = "3.02"`.
+  - `MenuGroup` возвращает группу с двумя пунктами (две вкладки):
+    - `TabPageFirst`
+    - `TabPageSecond`
+  - Путь к папке плагина/логам: `AppDomain.CurrentDomain.BaseDirectory + "Plugins\\\\" + MenuName + "\\\\"` → ожидается `...\\Office\\Plugins\\EDI-Doc 3.02\\`.
+
+UI сделан на DevExpress:
+
+- `PageFirst : XtraUserControl` — основной экран, табы **Черновики / Контрагенты / Входящие / Накладная**.
+- Настройки берутся из `Settings.Default.SettingsMain` (JSON `ConfigCL`), сохраняются через `Settings.Default.Save()`.
+
+Подключения:
+
+- iiko: из `RestApiClient.CurrentSessionAuthData` (serverUrl/login + PasswordHash/PasswordSha1Hash), далее `ServerApi` и `IikoHiddenApi`.
+- ЭДО: `DiadocMain(ApiToken, Login, Password)` или СБИС (`API_SBIS(Login, Password)`).
+
+Создание накладной в iiko:
+
+- `CreateiikoInvoice()` формирует `Download_inv_Document` и вызывает `ServerApi.Download_Invoice(...)` (в логе/коде парсится XML `documentValidationResult/documentNumber`).
+- Сопоставления и связь адрес→склад сохраняются через `IikoHiddenApi.SaveOrUpdateAnnouncements(...)` (JSON `CompareNews`/`CompareiikoPos`).
+
+---
+
 ## 5. Выводы для своей интеграции
 
 - **ЭДО:** используется **Контур.Диадок** (и заложена поддержка **СБИС**). Документы — УПД в XML (формат ФНС/Диадок).
