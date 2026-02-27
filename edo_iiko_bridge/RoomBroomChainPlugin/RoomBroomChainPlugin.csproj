@@ -19,10 +19,11 @@
       <HintPath>$(IikoChainLibDir)\Resto.BackApi.Core.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="Resto.BackApi.Core.Plugin">
-      <HintPath>$(IikoChainLibDir)\Resto.BackApi.Core.Plugin.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
   </ItemGroup>
+
+  <!--
+    В некоторых установках iikoChain типы INavBarPlugin/IPlugin/MenuGroup находятся в Resto.BackApi.Core.dll,
+    а отдельного Resto.BackApi.Core.Plugin.dll нет. Поэтому reference на Plugin.dll не требуем.
+  -->
 </Project>
 

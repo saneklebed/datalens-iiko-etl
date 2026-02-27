@@ -1,6 +1,6 @@
 param(
   [string]$Configuration = "Release",
-  [string]$OutDir = "$(Resolve-Path (Join-Path $PSScriptRoot "..\dist"))",
+  [string]$OutDir = "",
   [string]$IikoChainLibDir = ""
 )
 
@@ -8,6 +8,10 @@ $ErrorActionPreference = "Stop"
 
 $projDir = Resolve-Path (Join-Path $PSScriptRoot "..")
 $proj = Join-Path $projDir "RoomBroomChainPlugin.csproj"
+
+if ([string]::IsNullOrWhiteSpace($OutDir)) {
+  $OutDir = Join-Path $projDir "dist"
+}
 
 if ([string]::IsNullOrWhiteSpace($IikoChainLibDir)) {
   $props = Join-Path $projDir "Directory.Build.props"

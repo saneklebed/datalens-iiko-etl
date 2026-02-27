@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "Q2D78RZeMLI=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\Orange\\Documents\\GitHub\\datalens-iiko-etl\\edo_iiko_bridge\\RoomBroomChainPlugin\\RoomBroomChainPlugin.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\Orange\\.nuget\\packages\\microsoft.netframework.referenceassemblies\\1.0.3\\microsoft.netframework.referenceassemblies.1.0.3.nupkg.sha512",
+    "C:\\Users\\Orange\\.nuget\\packages\\microsoft.netframework.referenceassemblies.net48\\1.0.3\\microsoft.netframework.referenceassemblies.net48.1.0.3.nupkg.sha512"
+  ],
+  "logs": []
+}

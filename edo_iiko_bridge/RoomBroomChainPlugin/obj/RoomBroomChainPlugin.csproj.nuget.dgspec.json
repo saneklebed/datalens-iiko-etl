@@ -1,0 +1,58 @@
+{
+  "format": 1,
+  "restore": {
+    "C:\\Users\\Orange\\Documents\\GitHub\\datalens-iiko-etl\\edo_iiko_bridge\\RoomBroomChainPlugin\\RoomBroomChainPlugin.csproj": {}
+  },
+  "projects": {
+    "C:\\Users\\Orange\\Documents\\GitHub\\datalens-iiko-etl\\edo_iiko_bridge\\RoomBroomChainPlugin\\RoomBroomChainPlugin.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\Orange\\Documents\\GitHub\\datalens-iiko-etl\\edo_iiko_bridge\\RoomBroomChainPlugin\\RoomBroomChainPlugin.csproj",
+        "projectName": "RoomBroomChainPlugin",
+        "projectPath": "C:\\Users\\Orange\\Documents\\GitHub\\datalens-iiko-etl\\edo_iiko_bridge\\RoomBroomChainPlugin\\RoomBroomChainPlugin.csproj",
+        "packagesPath": "C:\\Users\\Orange\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\Orange\\Documents\\GitHub\\datalens-iiko-etl\\edo_iiko_bridge\\RoomBroomChainPlugin\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\Orange\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net48"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net48": {
+            "targetAlias": "net48",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net48": {
+          "targetAlias": "net48",
+          "dependencies": {
+            "Microsoft.NETFramework.ReferenceAssemblies": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[1.0.3, )",
+              "autoReferenced": true
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.418\\RuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

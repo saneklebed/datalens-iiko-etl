@@ -1,4 +1,5 @@
 using System;
+using Resto.BackApi.Core;
 using Resto.BackApi.Core.Plugin;
 
 public class RBPlugin : INavBarPlugin, IPlugin
