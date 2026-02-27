@@ -116,6 +116,17 @@ UI сделан на DevExpress:
 - `PageFirst : XtraUserControl` — основной экран, табы **Черновики / Контрагенты / Входящие / Накладная**.
 - Настройки берутся из `Settings.Default.SettingsMain` (JSON `ConfigCL`), сохраняются через `Settings.Default.Save()`.
 
+TabPages (каркас навигации) в DLL:
+
+- `TabPageFirst : PluginTabPageBase`, `Name = "Документы"`:
+  - `CreateControl()` → `new PageFirst()`, `new PageFirstController(pageFirst)`
+  - `LoadData()` → `controller.OnLoadData()`
+  - `GetTabPageId()` → `"Документы"`
+- `TabPageSecond : PluginTabPageBase`, `Name = "Настройки"`:
+  - `CreateControl()` → `new Настройки()`, `new PageSecondController(settings)`
+  - `LoadData()` → `controller.OnLoadData()`
+  - `GetTabPageId()` → `"Настройки"`
+
 Подключения:
 
 - iiko: из `RestApiClient.CurrentSessionAuthData` (serverUrl/login + PasswordHash/PasswordSha1Hash), далее `ServerApi` и `IikoHiddenApi`.

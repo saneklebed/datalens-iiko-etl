@@ -1,0 +1,17 @@
+<Project>
+  <PropertyGroup>
+    <!--
+      Укажи путь к папке, где лежат Resto.BackApi.Core*.dll.
+      Обычно это папка iikoChain Office, куда установлен продукт.
+
+      Пример (путь из твоих скринов):
+        C:\Users\Orange\Desktop\iiko\iikoChain\Chain Office 8.5.8002.0\
+
+      Внутри должен быть файл:
+        Resto.BackApi.Core.dll
+        Resto.BackApi.Core.Plugin.dll
+    -->
+    <IikoChainLibDir>C:\PATH\TO\iikoChain\Chain Office ...</IikoChainLibDir>
+  </PropertyGroup>
+</Project>
+

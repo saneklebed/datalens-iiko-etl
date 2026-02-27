@@ -26,6 +26,15 @@
   - `MenuName = "EDI-Doc 3.02"`, `Version = "3.02"`.
   - Свойство `MenuGroup` возвращает группу меню с двумя пунктами (две вкладки): **`TabPageFirst`** и **`TabPageSecond`** (через `new MenuItem((ITabPage)new TabPageFirst(), MenuName)` и аналогично для Second).
   - Путь к папке плагина/логам формируется как: `AppDomain.CurrentDomain.BaseDirectory + "Plugins\\\\" + MenuName + "\\\\"` → ожидается папка `...\\Office\\Plugins\\EDI-Doc 3.02\\`.
+- TabPages реализованы через базовый класс iiko:
+  - `TabPageFirst : PluginTabPageBase` с `Name = "Документы"`:
+    - `CreateControl()` создаёт `PageFirst` (WinForms/DevExpress `XtraUserControl`) и `PageFirstController`.
+    - `LoadData()` вызывает `controller.OnLoadData()`.
+    - `GetTabPageId()` возвращает `Name`.
+  - `TabPageSecond : PluginTabPageBase` с `Name = "Настройки"`:
+    - `CreateControl()` создаёт `Настройки` и `PageSecondController`.
+    - `LoadData()` вызывает `controller.OnLoadData()`.
+    - `GetTabPageId()` возвращает `Name`.
 - `PageFirst : XtraUserControl` (DevExpress) — основной UI, табы: **Черновики / Контрагенты / Входящие / Накладная**.
 - Настройки хранятся в `Settings.Default.SettingsMain` как JSON (`ConfigCL` через `JsonConvert.DeserializeObject`), меняются и сохраняются через `Settings.Default.Save()`.
 - Подключение к iiko берётся из `Resto.BackApi.Core.RestApi.RestApiClient.CurrentSessionAuthData` (serverUrl/login + PasswordHash/PasswordSha1Hash через reflection), далее используются `ServerApi` и `IikoHiddenApi`.
