@@ -55,3 +55,17 @@ dotnet build edo_iiko_bridge\RoomBroomChainPlugin\RoomBroomChainPlugin.csproj -c
 
 3) Перезапусти iikoChain Office — появится пункт `RoomBroom` с вкладками `Документы` и `Настройки`.
 
+## Скачать ZIP через GitHub Actions (как “вчера”: запустил → скачал)
+
+Ограничение: GitHub Actions **не может собрать DLL сам**, потому что для сборки нужны библиотеки iikoChain (`Resto.BackApi.Core*.dll`) из установленного iikoChain Office.
+
+Поэтому делаем так:
+
+1) Один раз собираешь DLL локально:
+   - `dotnet build ... -c Release`
+2) Убеждаешься, что в репо есть файл:
+   - `edo_iiko_bridge/RoomBroomChainPlugin/bin/Release/RoomBroomChainPlugin.dll`
+   (его можно закоммитить, если ок хранить бинарник в Git)
+3) Запускаешь workflow **RoomBroom iikoChain plugin (ZIP)** в Actions.
+4) Скачиваешь artifact `RoomBroomChainPlugin.zip` и распаковываешь в `...\Office\Plugins`.
+

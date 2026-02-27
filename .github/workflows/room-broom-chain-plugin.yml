@@ -1,0 +1,43 @@
+# RoomBroom iikoChain plugin: package ZIP as artifact
+name: RoomBroom iikoChain plugin (ZIP)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Verify prebuilt DLL exists
+        run: |
+          set -e
+          DLL="edo_iiko_bridge/RoomBroomChainPlugin/bin/Release/RoomBroomChainPlugin.dll"
+          if [ ! -f "$DLL" ]; then
+            echo "Missing prebuilt DLL: $DLL"
+            echo "Build it locally first (iikoChain libs are proprietary), then commit or add it to the repo, and rerun this workflow."
+            exit 1
+          fi
+
+      - name: Create ZIP (for Office\\Plugins)
+        run: |
+          set -e
+          mkdir -p dist/RoomBroomChainPlugin
+          cp edo_iiko_bridge/RoomBroomChainPlugin/bin/Release/RoomBroomChainPlugin.dll dist/RoomBroomChainPlugin/RoomBroomChainPlugin.dll
+          mkdir -p dist/RoomBroomChainPlugin/RoomBroom
+          printf "%s\n" \
+            "Эта папка зарезервирована под логи/настройки плагина RoomBroom." \
+            "Плагин в дальнейшем может писать сюда данные, аналогично EDI-Doc:" \
+            "  AppDomain.CurrentDomain.BaseDirectory + 'Plugins\\RoomBroom\\'" \
+            > dist/RoomBroomChainPlugin/RoomBroom/readme.txt
+          (cd dist/RoomBroomChainPlugin && zip -r ../RoomBroomChainPlugin.zip .)
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RoomBroomChainPlugin.zip
+          path: dist/RoomBroomChainPlugin.zip
+
