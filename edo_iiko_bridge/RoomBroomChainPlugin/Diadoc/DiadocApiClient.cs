@@ -71,11 +71,32 @@ namespace RoomBroomChainPlugin.Diadoc
                     "application/json");
                 var resp = await _http.SendAsync(req).ConfigureAwait(false);
                 await EnsureSuccessOrThrowAsync(resp).ConfigureAwait(false);
-                _token = NormalizeToken(await resp.Content.ReadAsStringAsync().ConfigureAwait(false));
+                var raw = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                _token = ParseTokenFromResponse(raw);
             }
             if (string.IsNullOrEmpty(_token))
                 throw new InvalidOperationException("Диадок вернул пустой токен.");
             return _token;
+        }
+
+        /// <summary>Токен из ответа: либо сырая строка, либо JSON "token"/"Token", убираем кавычки по краям.</summary>
+        private static string ParseTokenFromResponse(string raw)
+        {
+            if (string.IsNullOrEmpty(raw)) return raw;
+            var s = raw.Trim();
+            if (s.StartsWith("{"))
+            {
+                try
+                {
+                    var jo = JObject.Parse(s);
+                    var t = (string)jo["token"] ?? (string)jo["Token"];
+                    return NormalizeToken(t ?? "");
+                }
+                catch { return NormalizeToken(s); }
+            }
+            if (s.Length >= 2 && s[0] == '"' && s[s.Length - 1] == '"')
+                s = s.Substring(1, s.Length - 2).Replace("\\\"", "\"");
+            return NormalizeToken(s);
         }
 
         /// <summary>GET /GetMyOrganizations → список организаций и ящиков.</summary>
