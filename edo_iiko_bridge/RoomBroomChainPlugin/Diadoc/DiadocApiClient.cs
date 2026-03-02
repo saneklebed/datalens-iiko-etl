@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -144,15 +143,21 @@ namespace RoomBroomChainPlugin.Diadoc
             return list;
         }
 
-        /// <summary>GET /V3/GetCounteragents?myBoxId=... → контрагенты (Организация, ИНН, КПП). Используем HttpWebRequest, чтобы query-параметры гарантированно доходили до сервера.</summary>
+        /// <summary>GET /V3/GetCounteragents?myBoxId=... (по доке: myBoxId обязателен). URL одной строкой как в примере из доки.</summary>
         public async Task<List<CounteragentRow>> GetCounteragentsAsync(string myBoxId)
         {
             if (string.IsNullOrWhiteSpace(myBoxId))
                 throw new InvalidOperationException("Выберите юр. лицо с ящиком Диадока (у выбранной организации нет BoxId).");
             myBoxId = myBoxId.Trim();
-            var ub = new UriBuilder(BaseUrl) { Path = "/V3/GetCounteragents" };
-            ub.Query = "myBoxId=" + Uri.EscapeDataString(myBoxId) + "&counteragentStatus=IsMyCounteragent&pageSize=100";
-            string json = await GetStringWithWebRequestAsync(ub.Uri).ConfigureAwait(false);
+            var url = BaseUrl + "/V3/GetCounteragents?myBoxId=" + Uri.EscapeDataString(myBoxId) + "&counteragentStatus=IsMyCounteragent&pageSize=100";
+            string json;
+            using (var req = new HttpRequestMessage(HttpMethod.Get, url))
+            {
+                SetAuthorization(req, AuthHeader());
+                var resp = await _http.SendAsync(req).ConfigureAwait(false);
+                await EnsureSuccessOrThrowAsync(resp).ConfigureAwait(false);
+                json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            }
             var root = JObject.Parse(json);
             var arr = root["Counteragents"] as JArray;
             var list = new List<CounteragentRow>();
@@ -171,16 +176,22 @@ namespace RoomBroomChainPlugin.Diadoc
             return list;
         }
 
-        /// <summary>GET /V3/GetDocuments (входящие или черновики). HttpWebRequest для надёжной передачи query.</summary>
+        /// <summary>GET /V3/GetDocuments (входящие или черновики). URL одной строкой.</summary>
         public async Task<List<DiadocDocumentRow>> GetDocumentsAsync(string boxId, bool incoming)
         {
             if (string.IsNullOrWhiteSpace(boxId))
                 throw new InvalidOperationException("Выберите юр. лицо с ящиком Диадока (у выбранной организации нет BoxId).");
             boxId = boxId.Trim();
             var filter = incoming ? "Any.InboundNotRevoked" : "Any.Draft";
-            var ub = new UriBuilder(BaseUrl) { Path = "/V3/GetDocuments" };
-            ub.Query = "boxId=" + Uri.EscapeDataString(boxId) + "&filterCategory=" + Uri.EscapeDataString(filter) + "&count=100&sortDirection=Descending";
-            string json = await GetStringWithWebRequestAsync(ub.Uri).ConfigureAwait(false);
+            var url = BaseUrl + "/V3/GetDocuments?boxId=" + Uri.EscapeDataString(boxId) + "&filterCategory=" + Uri.EscapeDataString(filter) + "&count=100&sortDirection=Descending";
+            string json;
+            using (var req = new HttpRequestMessage(HttpMethod.Get, url))
+            {
+                SetAuthorization(req, AuthHeader());
+                var resp = await _http.SendAsync(req).ConfigureAwait(false);
+                await EnsureSuccessOrThrowAsync(resp).ConfigureAwait(false);
+                json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            }
             var root = JObject.Parse(json);
             var arr = root["Documents"] as JArray;
             var list = new List<DiadocDocumentRow>();
@@ -197,54 +208,6 @@ namespace RoomBroomChainPlugin.Diadoc
                 });
             }
             return list;
-        }
-
-        /// <summary>GET по URI через HttpWebRequest (query-параметры не теряются в отличие от части окружений с HttpClient).</summary>
-        private async Task<string> GetStringWithWebRequestAsync(Uri uri)
-        {
-            var auth = AuthHeader();
-            var request = (HttpWebRequest)WebRequest.Create(uri);
-            request.Method = "GET";
-            request.Accept = "application/json; charset=utf-8";
-            request.Headers["Authorization"] = auth;
-            request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
-            try
-            {
-                using (var response = (HttpWebResponse)await Task.Factory.FromAsync(request.BeginGetResponse, request.EndGetResponse, null).ConfigureAwait(false))
-                using (var stream = response.GetResponseStream())
-                using (var reader = new StreamReader(stream, Encoding.UTF8))
-                {
-                    return await reader.ReadToEndAsync().ConfigureAwait(false);
-                }
-            }
-            catch (WebException we)
-            {
-                var response = we.Response as HttpWebResponse;
-                if (response != null)
-                {
-                    using (var stream = response.GetResponseStream())
-                    using (var reader = new StreamReader(stream, Encoding.UTF8))
-                    {
-                        var body = await reader.ReadToEndAsync().ConfigureAwait(false);
-                        string message = null;
-                        try
-                        {
-                            var jo = JObject.Parse(body);
-                            message = (string)jo["message"];
-                        }
-                        catch { }
-                        if (string.IsNullOrEmpty(message))
-                        {
-                            if (response.StatusCode == HttpStatusCode.Unauthorized) message = "Неверный логин, пароль или API-токен Диадока.";
-                            else if (response.StatusCode == (HttpStatusCode)429) message = "Превышен лимит запросов.";
-                            else if ((int)response.StatusCode >= 500) message = "Сервис Диадока временно недоступен.";
-                            else message = body ?? response.StatusDescription ?? response.StatusCode.ToString();
-                        }
-                        throw new InvalidOperationException(message);
-                    }
-                }
-                throw new InvalidOperationException(we.Message, we);
-            }
         }
 
         private static async Task EnsureSuccessOrThrowAsync(HttpResponseMessage resp)
