@@ -101,8 +101,18 @@ namespace Pages
             };
             var labelFrom = new LabelControl { Text = "С", AutoSizeMode = LabelAutoSizeMode.None };
             _dateFrom = new DateEdit { Size = new Size(194, 22) };
+            _dateFrom.Properties.Mask.MaskType = DevExpress.XtraEditors.Mask.MaskType.None;
+            _dateFrom.Properties.DisplayFormat.FormatType = FormatType.DateTime;
+            _dateFrom.Properties.DisplayFormat.FormatString = "dd.MM.yyyy";
+            _dateFrom.Properties.EditFormat.FormatType = FormatType.DateTime;
+            _dateFrom.Properties.EditFormat.FormatString = "dd.MM.yyyy";
             var labelTo = new LabelControl { Text = "По", AutoSizeMode = LabelAutoSizeMode.None };
             _dateTo = new DateEdit { Size = new Size(194, 22) };
+            _dateTo.Properties.Mask.MaskType = DevExpress.XtraEditors.Mask.MaskType.None;
+            _dateTo.Properties.DisplayFormat.FormatType = FormatType.DateTime;
+            _dateTo.Properties.DisplayFormat.FormatString = "dd.MM.yyyy";
+            _dateTo.Properties.EditFormat.FormatType = FormatType.DateTime;
+            _dateTo.Properties.EditFormat.FormatString = "dd.MM.yyyy";
             _dateFrom.DateTime = new DateTime(now.Year, now.Month, 1);
             _dateTo.DateTime = new DateTime(now.Year, now.Month, DateTime.DaysInMonth(now.Year, now.Month));
             _btnFetchInvoices = new SimpleButton { Text = "Получить накладные", Width = 165 };
