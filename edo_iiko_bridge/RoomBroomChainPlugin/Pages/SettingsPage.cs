@@ -57,7 +57,8 @@ namespace Pages
             _save.Click += OnSaveClick;
 
             _createInvoiceWithPosting.Properties.OffText = "Выкл";
-            _createInvoiceWithPosting.Properties.OnText = "Вкл";
+            _createInvoiceWithPosting.Properties.OnText = "Создавать накладные с проведением";
+            _createInvoiceWithPosting.Properties.ShowText = true;
 
             _enableReports.Properties.OffText = "Выкл";
             _enableReports.Properties.OnText = "Вкл";
@@ -74,7 +75,7 @@ namespace Pages
             g.AddItem("Логин", _login);
             g.AddItem("Пароль", _password);
             g.AddItem("Api Token", _token);
-            g.AddItem("Создавать накладные с проведением", _createInvoiceWithPosting);
+            g.AddItem("", _createInvoiceWithPosting).TextVisible = false;
             g.AddItem("", _save).TextVisible = false;
 
             var reportsGroup = new GroupControl

@@ -51,6 +51,8 @@ Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $stage
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
 Copy-Item $dll (Join-Path $stage "RoomBroomChainPlugin.dll") -Force
+$jsonDll = Join-Path $projDir "bin\$Configuration\Newtonsoft.Json.dll"
+if (Test-Path $jsonDll) { Copy-Item $jsonDll (Join-Path $stage "Newtonsoft.Json.dll") -Force }
 
 # (опционально) папка под логи/конфиги, если позже понадобится
 $logsDir = Join-Path $stage "RoomBroom"
