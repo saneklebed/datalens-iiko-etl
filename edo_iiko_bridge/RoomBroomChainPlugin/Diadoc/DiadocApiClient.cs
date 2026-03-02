@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
-using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
@@ -11,23 +11,33 @@ using RoomBroomChainPlugin.Config;
 namespace RoomBroomChainPlugin.Diadoc
 {
     /// <summary>
-    /// Вызовы API Диадока. Креды берутся из настроек плагина (ConfigStore).
+    /// HTTP-клиент Диадока, максимально близкий к Diadoc.Api.Http.HttpClient из SDK 2.45.
+    /// Использует HttpWebRequest (тот же стек, что и рабочий EDI-Doc плагин).
     /// </summary>
     public class DiadocApiClient
     {
         private const string BaseUrl = "https://diadoc-api.kontur.ru";
-        private readonly HttpClient _http;
         private readonly RoomBroomConfig _config;
         private string _token;
 
         public DiadocApiClient(RoomBroomConfig config)
         {
             _config = config ?? new RoomBroomConfig();
-            _http = new HttpClient();
-            _http.DefaultRequestHeaders.Add("Accept", "application/json; charset=utf-8");
         }
 
-        /// <summary>Убирает пробелы/переносы и лишний слэш, чтобы заголовок Authorization не ломал парсер Диадока.</summary>
+        #region URL / header helpers
+
+        /// <summary>
+        /// Формирует полный URL аналогично PrepareWebRequest из SDK:
+        /// baseUrl + "/" + pathAndQuery (без дублирования слэша).
+        /// </summary>
+        private static string BuildUrl(string pathAndQuery)
+        {
+            if (pathAndQuery.StartsWith("/"))
+                pathAndQuery = pathAndQuery.Substring(1);
+            return BaseUrl + "/" + pathAndQuery;
+        }
+
         private static string NormalizeToken(string value)
         {
             if (string.IsNullOrEmpty(value)) return value;
@@ -36,7 +46,18 @@ namespace RoomBroomChainPlugin.Diadoc
             return s;
         }
 
-        /// <summary>Формат как в DiadocHttpApi.GetAuthorizationHeaderValue: DiadocAuth ddauth_api_client_id=...,ddauth_token=...</summary>
+        /// <summary>
+        /// BoxId из JSON может приходить как "guid@diadoc.ru".
+        /// API ожидает чистый GUID без доменного суффикса.
+        /// </summary>
+        private static string StripBoxIdDomain(string boxId)
+        {
+            if (string.IsNullOrEmpty(boxId)) return boxId;
+            var idx = boxId.IndexOf('@');
+            return idx >= 0 ? boxId.Substring(0, idx) : boxId;
+        }
+
+        /// <summary>DiadocAuth ddauth_api_client_id=...,ddauth_token=...</summary>
         private string AuthHeader()
         {
             if (string.IsNullOrEmpty(_token))
@@ -50,36 +71,6 @@ namespace RoomBroomChainPlugin.Diadoc
             return sb.ToString();
         }
 
-        /// <summary>Добавляет Authorization без разбора заголовка (иначе .NET может перепарсить и исказить значение).</summary>
-        private static void SetAuthorization(HttpRequestMessage req, string value)
-        {
-            req.Headers.TryAddWithoutValidation("Authorization", value);
-        }
-
-        /// <summary>POST /V3/Authenticate?type=password → токен.</summary>
-        public async Task<string> AuthenticateAsync()
-        {
-            if (string.IsNullOrWhiteSpace(_config.DiadocApiToken) || string.IsNullOrWhiteSpace(_config.DiadocLogin))
-                throw new InvalidOperationException("Укажите в настройках Api Token и Логин Диадока.");
-            var url = BaseUrl + "/V3/Authenticate?type=password";
-            using (var req = new HttpRequestMessage(HttpMethod.Post, new Uri(url)))
-            {
-                SetAuthorization(req, "DiadocAuth ddauth_api_client_id=" + NormalizeToken(_config.DiadocApiToken ?? ""));
-                req.Content = new StringContent(
-                    JsonConvert.SerializeObject(new { login = _config.DiadocLogin, password = _config.DiadocPassword ?? "" }),
-                    Encoding.UTF8,
-                    "application/json");
-                var resp = await _http.SendAsync(req).ConfigureAwait(false);
-                await EnsureSuccessOrThrowAsync(resp).ConfigureAwait(false);
-                var raw = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
-                _token = ParseTokenFromResponse(raw);
-            }
-            if (string.IsNullOrEmpty(_token))
-                throw new InvalidOperationException("Диадок вернул пустой токен.");
-            return _token;
-        }
-
-        /// <summary>Токен из ответа: либо сырая строка, либо JSON "token"/"Token". Убираем обрамляющие кавычки (иначе в заголовке будет ...token" и ошибка «формат недопустим»).</summary>
         private static string ParseTokenFromResponse(string raw)
         {
             if (string.IsNullOrEmpty(raw)) return raw;
@@ -94,29 +85,158 @@ namespace RoomBroomChainPlugin.Diadoc
                 }
                 catch { }
             }
-            // Снять одну ведущую и одну завершающую кавычку (ответ может быть JSON-строка "token" или token" без первой кавычки)
             if (s.Length >= 1 && s[0] == '"') s = s.Substring(1);
             if (s.Length >= 1 && s[s.Length - 1] == '"') s = s.Substring(0, s.Length - 1);
             s = s.Replace("\\\"", "\"");
             return NormalizeToken(s);
         }
 
-        /// <summary>GET /GetMyOrganizations → список организаций и ящиков.</summary>
+        private static void LogRequest(string method, string url)
+        {
+            try
+            {
+                var dir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                if (string.IsNullOrEmpty(dir)) dir = Path.GetTempPath();
+                var folder = Path.Combine(dir, "RoomBroomChainPlugin");
+                Directory.CreateDirectory(folder);
+                var file = Path.Combine(folder, "diadoc_last_request.txt");
+                File.WriteAllText(file,
+                    DateTime.UtcNow.ToString("o") + "\n" + method + " " + url,
+                    Encoding.UTF8);
+            }
+            catch { }
+        }
+
+        #endregion
+
+        #region Low-level HTTP (HttpWebRequest — как в SDK)
+
+        /// <summary>
+        /// Создаёт и отправляет HttpWebRequest. Полная аналогия PrepareWebRequest + PerformHttpRequest из SDK.
+        /// </summary>
+        private async Task<string> PerformRequestAsync(
+            string method,
+            string pathAndQuery,
+            string authHeaderValue,
+            byte[] body = null,
+            string bodyContentType = null)
+        {
+            var url = BuildUrl(pathAndQuery);
+            LogRequest(method, url);
+
+            var request = (HttpWebRequest)WebRequest.Create(url);
+            request.Method = method;
+            request.Accept = "application/json";
+            request.AllowAutoRedirect = true;
+            request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
+            request.Timeout = 60000;
+
+            if (!string.IsNullOrEmpty(authHeaderValue))
+                request.Headers.Add("Authorization", authHeaderValue);
+
+            if (body != null && body.Length > 0)
+            {
+                request.ContentType = bodyContentType ?? "application/json; charset=utf-8";
+                request.ContentLength = body.Length;
+                using (var stream = request.GetRequestStream())
+                    stream.Write(body, 0, body.Length);
+            }
+            else
+            {
+                request.ContentLength = 0;
+            }
+
+            try
+            {
+                using (var response = (HttpWebResponse)await request.GetResponseAsync().ConfigureAwait(false))
+                using (var stream = response.GetResponseStream())
+                using (var reader = new StreamReader(stream ?? Stream.Null, Encoding.UTF8))
+                {
+                    return await reader.ReadToEndAsync().ConfigureAwait(false);
+                }
+            }
+            catch (WebException we)
+            {
+                throw WrapWebException(we, pathAndQuery);
+            }
+        }
+
+        private static InvalidOperationException WrapWebException(WebException we, string pathAndQuery)
+        {
+            var httpResp = we.Response as HttpWebResponse;
+            if (httpResp == null)
+                return new InvalidOperationException("Ошибка соединения с Диадоком: " + we.Message, we);
+
+            using (httpResp)
+            using (var stream = httpResp.GetResponseStream())
+            using (var reader = new StreamReader(stream ?? Stream.Null, Encoding.UTF8))
+            {
+                var body = reader.ReadToEnd();
+                string message = null;
+                try { message = (string)JObject.Parse(body)["message"]; } catch { }
+
+                if (string.IsNullOrEmpty(message))
+                {
+                    var code = httpResp.StatusCode;
+                    if (code == HttpStatusCode.Unauthorized)
+                        message = "Неверный логин, пароль или API-токен Диадока.";
+                    else if ((int)code == 429)
+                        message = "Превышен лимит запросов. Попробуйте позже.";
+                    else if ((int)code >= 500)
+                        message = "Сервис Диадока временно недоступен.";
+                    else
+                        message = string.IsNullOrEmpty(body)
+                            ? httpResp.StatusDescription ?? code.ToString()
+                            : body;
+                }
+                return new InvalidOperationException(
+                    $"[{(int)httpResp.StatusCode} {pathAndQuery}] {message}", we);
+            }
+        }
+
+        #endregion
+
+        #region Diadoc API methods
+
+        /// <summary>POST /V3/Authenticate?type=password → токен.</summary>
+        public async Task<string> AuthenticateAsync()
+        {
+            if (string.IsNullOrWhiteSpace(_config.DiadocApiToken) || string.IsNullOrWhiteSpace(_config.DiadocLogin))
+                throw new InvalidOperationException("Укажите в настройках Api Token и Логин Диадока.");
+
+            var authHeader = "DiadocAuth ddauth_api_client_id=" + NormalizeToken(_config.DiadocApiToken);
+            var bodyJson = JsonConvert.SerializeObject(new
+            {
+                login = _config.DiadocLogin,
+                password = _config.DiadocPassword ?? ""
+            });
+            var bodyBytes = Encoding.UTF8.GetBytes(bodyJson);
+
+            var raw = await PerformRequestAsync(
+                "POST",
+                "V3/Authenticate?type=password",
+                authHeader,
+                bodyBytes,
+                "application/json; charset=utf-8"
+            ).ConfigureAwait(false);
+
+            _token = ParseTokenFromResponse(raw);
+            if (string.IsNullOrEmpty(_token))
+                throw new InvalidOperationException("Диадок вернул пустой токен.");
+            return _token;
+        }
+
+        /// <summary>GET /GetMyOrganizations</summary>
         public async Task<List<DiadocOrg>> GetMyOrganizationsAsync()
         {
-            var ub = new UriBuilder(BaseUrl) { Path = "/GetMyOrganizations" };
-            string json;
-            using (var req = new HttpRequestMessage(HttpMethod.Get, ub.Uri))
-            {
-                SetAuthorization(req, AuthHeader());
-                var resp = await _http.SendAsync(req).ConfigureAwait(false);
-                await EnsureSuccessOrThrowAsync(resp).ConfigureAwait(false);
-                json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
-            }
+            var json = await PerformRequestAsync("GET", "GetMyOrganizations", AuthHeader())
+                .ConfigureAwait(false);
+
             var root = JObject.Parse(json);
             var orgs = root["Organizations"] as JArray;
             var list = new List<DiadocOrg>();
             if (orgs == null) return list;
+
             foreach (var o in orgs)
             {
                 var boxes = o["Boxes"] as JArray;
@@ -137,31 +257,33 @@ namespace RoomBroomChainPlugin.Diadoc
                 {
                     OrgId = (string)o["OrgId"],
                     Name = name,
-                    BoxId = boxId.Trim()
+                    BoxId = StripBoxIdDomain(boxId.Trim())
                 });
             }
             return list;
         }
 
-        /// <summary>GET /V3/GetCounteragents?myBoxId=... (по доке: myBoxId обязателен). URL одной строкой как в примере из доки.</summary>
+        /// <summary>GET /V3/GetCounteragents?myBoxId=...</summary>
         public async Task<List<CounteragentRow>> GetCounteragentsAsync(string myBoxId)
         {
             if (string.IsNullOrWhiteSpace(myBoxId))
-                throw new InvalidOperationException("Выберите юр. лицо с ящиком Диадока (у выбранной организации нет BoxId).");
-            myBoxId = myBoxId.Trim();
-            var url = BaseUrl + "/V3/GetCounteragents?myBoxId=" + Uri.EscapeDataString(myBoxId) + "&counteragentStatus=IsMyCounteragent&pageSize=100";
-            string json;
-            using (var req = new HttpRequestMessage(HttpMethod.Get, url))
-            {
-                SetAuthorization(req, AuthHeader());
-                var resp = await _http.SendAsync(req).ConfigureAwait(false);
-                await EnsureSuccessOrThrowAsync(resp).ConfigureAwait(false);
-                json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
-            }
+                throw new InvalidOperationException(
+                    "Выберите юр. лицо с ящиком Диадока (у выбранной организации нет BoxId).");
+
+            var cleanBoxId = StripBoxIdDomain(myBoxId.Trim());
+            var pq = new StringBuilder("V3/GetCounteragents");
+            pq.Append("?myBoxId=").Append(Uri.EscapeDataString(cleanBoxId));
+            pq.Append("&counteragentStatus=IsMyCounteragent");
+            pq.Append("&pageSize=100");
+
+            var json = await PerformRequestAsync("GET", pq.ToString(), AuthHeader())
+                .ConfigureAwait(false);
+
             var root = JObject.Parse(json);
             var arr = root["Counteragents"] as JArray;
             var list = new List<CounteragentRow>();
             if (arr == null) return list;
+
             foreach (var c in arr)
             {
                 var org = c["Organization"];
@@ -176,26 +298,29 @@ namespace RoomBroomChainPlugin.Diadoc
             return list;
         }
 
-        /// <summary>GET /V3/GetDocuments (входящие или черновики). URL одной строкой.</summary>
+        /// <summary>GET /V3/GetDocuments (входящие или черновики).</summary>
         public async Task<List<DiadocDocumentRow>> GetDocumentsAsync(string boxId, bool incoming)
         {
             if (string.IsNullOrWhiteSpace(boxId))
-                throw new InvalidOperationException("Выберите юр. лицо с ящиком Диадока (у выбранной организации нет BoxId).");
-            boxId = boxId.Trim();
+                throw new InvalidOperationException(
+                    "Выберите юр. лицо с ящиком Диадока (у выбранной организации нет BoxId).");
+
+            var cleanBoxId = StripBoxIdDomain(boxId.Trim());
             var filter = incoming ? "Any.InboundNotRevoked" : "Any.Draft";
-            var url = BaseUrl + "/V3/GetDocuments?boxId=" + Uri.EscapeDataString(boxId) + "&filterCategory=" + Uri.EscapeDataString(filter) + "&count=100&sortDirection=Descending";
-            string json;
-            using (var req = new HttpRequestMessage(HttpMethod.Get, url))
-            {
-                SetAuthorization(req, AuthHeader());
-                var resp = await _http.SendAsync(req).ConfigureAwait(false);
-                await EnsureSuccessOrThrowAsync(resp).ConfigureAwait(false);
-                json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
-            }
+            var pq = new StringBuilder("V3/GetDocuments");
+            pq.Append("?boxId=").Append(Uri.EscapeDataString(cleanBoxId));
+            pq.Append("&filterCategory=").Append(Uri.EscapeDataString(filter));
+            pq.Append("&count=100");
+            pq.Append("&sortDirection=Descending");
+
+            var json = await PerformRequestAsync("GET", pq.ToString(), AuthHeader())
+                .ConfigureAwait(false);
+
             var root = JObject.Parse(json);
             var arr = root["Documents"] as JArray;
             var list = new List<DiadocDocumentRow>();
             if (arr == null) return list;
+
             foreach (var d in arr)
             {
                 list.Add(new DiadocDocumentRow
@@ -210,26 +335,7 @@ namespace RoomBroomChainPlugin.Diadoc
             return list;
         }
 
-        private static async Task EnsureSuccessOrThrowAsync(HttpResponseMessage resp)
-        {
-            if (resp.IsSuccessStatusCode) return;
-            var body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
-            string message = null;
-            try
-            {
-                var jo = JObject.Parse(body);
-                message = (string)jo["message"];
-            }
-            catch { }
-            if (string.IsNullOrEmpty(message))
-            {
-                if (resp.StatusCode == HttpStatusCode.Unauthorized) message = "Неверный логин, пароль или API-токен Диадока.";
-                else if (resp.StatusCode == (HttpStatusCode)429) message = "Превышен лимит запросов. Попробуйте позже.";
-                else if ((int)resp.StatusCode >= 500) message = "Сервис Диадока временно недоступен.";
-                else message = body ?? resp.ReasonPhrase ?? resp.StatusCode.ToString();
-            }
-            throw new InvalidOperationException(message);
-        }
+        #endregion
     }
 
     public class DiadocOrg
