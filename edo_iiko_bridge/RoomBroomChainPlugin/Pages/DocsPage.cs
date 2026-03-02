@@ -104,24 +104,18 @@ namespace Pages
                 Width = 100,
                 EditValue = new DateTime(now.Year, now.Month, 1)
             };
+            _dateFrom.Properties.Mask.MaskType = DevExpress.XtraEditors.Mask.MaskType.None;
             _dateFrom.Properties.DisplayFormat.FormatString = "dd.MM.yyyy";
             _dateFrom.Properties.DisplayFormat.FormatType = FormatType.DateTime;
-            _dateFrom.Properties.EditFormat.FormatString = "dd.MM.yyyy";
-            _dateFrom.Properties.EditFormat.FormatType = FormatType.DateTime;
-            _dateFrom.Properties.Mask.EditMask = "dd.MM.yyyy";
-            _dateFrom.Properties.Mask.UseMaskAsDisplayFormat = true;
             var labelTo = new LabelControl { Text = "По", AutoSizeMode = LabelAutoSizeMode.None };
             _dateTo = new DateEdit
             {
                 Width = 100,
                 EditValue = new DateTime(now.Year, now.Month, DateTime.DaysInMonth(now.Year, now.Month))
             };
+            _dateTo.Properties.Mask.MaskType = DevExpress.XtraEditors.Mask.MaskType.None;
             _dateTo.Properties.DisplayFormat.FormatString = "dd.MM.yyyy";
             _dateTo.Properties.DisplayFormat.FormatType = FormatType.DateTime;
-            _dateTo.Properties.EditFormat.FormatString = "dd.MM.yyyy";
-            _dateTo.Properties.EditFormat.FormatType = FormatType.DateTime;
-            _dateTo.Properties.Mask.EditMask = "dd.MM.yyyy";
-            _dateTo.Properties.Mask.UseMaskAsDisplayFormat = true;
             _btnFetchInvoices = new SimpleButton { Text = "Получить накладные", Width = 160 };
             _btnFetchInvoices.Click += (s, e) => RefreshIncomingDocumentsAsync();
             _filterPanel.Controls.Add(labelFrom);
