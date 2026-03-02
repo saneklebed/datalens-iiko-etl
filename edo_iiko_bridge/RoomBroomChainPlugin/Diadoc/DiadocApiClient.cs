@@ -47,6 +47,23 @@ namespace RoomBroomChainPlugin.Diadoc
         }
 
         /// <summary>
+        /// Сокращённое название юр. лица: предпочитаем ShortName; если только FullName —
+        /// заменяем «Общество с ограниченной ответственностью» → «ООО», «Акционерное общество» → «АО», убираем кавычки.
+        /// </summary>
+        private static string ShortenOrganizationName(string shortName, string fullName)
+        {
+            if (!string.IsNullOrWhiteSpace(shortName))
+                return shortName.Trim();
+            if (string.IsNullOrWhiteSpace(fullName))
+                return "";
+            var s = fullName.Trim();
+            s = s.Replace("Общество с ограниченной ответственностью", "ООО");
+            s = s.Replace("Акционерное общество", "АО");
+            s = s.Replace("\"", "").Trim();
+            return s;
+        }
+
+        /// <summary>
         /// BoxId из JSON может приходить как "guid@diadoc.ru".
         /// API ожидает чистый GUID без доменного суффикса.
         /// </summary>
@@ -288,9 +305,11 @@ namespace RoomBroomChainPlugin.Diadoc
             {
                 var org = c["Organization"];
                 if (org == null) continue;
+                var shortName = (string)org["ShortName"];
+                var fullName = (string)org["FullName"];
                 list.Add(new CounteragentRow
                 {
-                    Organization = (string)(org["FullName"] ?? org["ShortName"] ?? ""),
+                    Organization = ShortenOrganizationName(shortName, fullName),
                     Inn = (string)org["Inn"] ?? "",
                     Kpp = (string)org["Kpp"] ?? ""
                 });

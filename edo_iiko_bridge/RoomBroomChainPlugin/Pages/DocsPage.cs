@@ -169,8 +169,11 @@ namespace Pages
                     _grid.DataSource = list ?? new List<CounteragentRow>();
                     _gridView.PopulateColumns();
                     _gridView.Columns["Organization"].Visible = true;
+                    _gridView.Columns["Organization"].Caption = "Организация";
                     _gridView.Columns["Inn"].Visible = true;
+                    _gridView.Columns["Inn"].Caption = "ИНН";
                     _gridView.Columns["Kpp"].Visible = true;
+                    _gridView.Columns["Kpp"].Caption = "КПП";
                 }
                 else if (_currentMode == ModeIncoming || _currentMode == ModeDrafts)
                 {
