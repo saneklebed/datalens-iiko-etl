@@ -1,5 +1,12 @@
 # RoomBroom — iikoChain Office plugin (пустые вкладки)
 
+## Важно: кто что делает
+
+- **Сборка проекта и создание ZIP** — делаются в репозитории: скрипт `scripts/package.ps1` сам собирает проект и наполняет `dist/RoomBroomChainPlugin.zip` всеми нужными файлами.
+- **Твоя задача** — взять готовый `RoomBroomChainPlugin.zip` из папки `dist`, перенести его в нужную папку (например `C:\Program Files\iiko\iikoChain\Office\Plugins`), распаковать и тестировать в Chain. Пересборку и упаковку делай через скрипт, не вручную.
+
+---
+
 Цель: получить в iikoChain Office **пункт в левой навигации** `RoomBroom` с двумя вкладками:
 
 - `Документы` — пустая страница
@@ -49,9 +56,9 @@ dotnet build edo_iiko_bridge\RoomBroomChainPlugin\RoomBroomChainPlugin.csproj -c
 
 На выходе будет `edo_iiko_bridge\RoomBroomChainPlugin\dist\RoomBroomChainPlugin.zip`.
 
-## Как установить
+## Как установить (только развертывание готового ZIP)
 
-1) **Распакуй ZIP** в:
+1) **Возьми готовый ZIP** из `dist/RoomBroomChainPlugin.zip` (его создаёт скрипт упаковки) и **распакуй** в:
 
 `C:\Program Files\iiko\iikoChain\Office\Plugins`
 
