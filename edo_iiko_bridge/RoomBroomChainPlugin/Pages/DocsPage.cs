@@ -99,34 +99,22 @@ namespace Pages
                 Padding = new Padding(8, 4, 8, 4),
                 Visible = false
             };
-            var labelFrom = new LabelControl { Text = "С", AutoSizeMode = LabelAutoSizeMode.None };
+            var labelFrom = new LabelControl { Text = "С", Size = new Size(20, 16) };
             _dateFrom = new DateEdit { Size = new Size(194, 22) };
-            _dateFrom.Properties.Mask.MaskType = DevExpress.XtraEditors.Mask.MaskType.None;
-            _dateFrom.Properties.DisplayFormat.FormatType = FormatType.DateTime;
-            _dateFrom.Properties.DisplayFormat.FormatString = "dd.MM.yyyy";
-            _dateFrom.Properties.EditFormat.FormatType = FormatType.DateTime;
-            _dateFrom.Properties.EditFormat.FormatString = "dd.MM.yyyy";
-            var labelTo = new LabelControl { Text = "По", AutoSizeMode = LabelAutoSizeMode.None };
-            _dateTo = new DateEdit { Size = new Size(194, 22) };
-            _dateTo.Properties.Mask.MaskType = DevExpress.XtraEditors.Mask.MaskType.None;
-            _dateTo.Properties.DisplayFormat.FormatType = FormatType.DateTime;
-            _dateTo.Properties.DisplayFormat.FormatString = "dd.MM.yyyy";
-            _dateTo.Properties.EditFormat.FormatType = FormatType.DateTime;
-            _dateTo.Properties.EditFormat.FormatString = "dd.MM.yyyy";
             _dateFrom.DateTime = new DateTime(now.Year, now.Month, 1);
+            var labelTo = new LabelControl { Text = "По", Size = new Size(22, 16) };
+            _dateTo = new DateEdit { Size = new Size(194, 22) };
             _dateTo.DateTime = new DateTime(now.Year, now.Month, DateTime.DaysInMonth(now.Year, now.Month));
             _btnFetchInvoices = new SimpleButton { Text = "Получить накладные", Width = 165 };
             _btnFetchInvoices.Click += (s, e) => RefreshIncomingDocumentsAsync();
-            _filterPanel.Controls.Add(labelFrom);
-            _filterPanel.Controls.Add(_dateFrom);
-            _filterPanel.Controls.Add(labelTo);
-            _filterPanel.Controls.Add(_dateTo);
-            _filterPanel.Controls.Add(_btnFetchInvoices);
             labelFrom.Location = new Point(22, 15);
             _dateFrom.Location = new Point(48, 11);
             labelTo.Location = new Point(249, 15);
             _dateTo.Location = new Point(281, 11);
             _btnFetchInvoices.Location = new Point(509, 9);
+            _filterPanel.Controls.AddRange(new Control[] { _btnFetchInvoices, _dateTo, labelTo, _dateFrom, labelFrom });
+            _dateFrom.BringToFront();
+            _dateTo.BringToFront();
 
             _grid = new GridControl { Dock = DockStyle.Fill };
             _gridView = new GridView(_grid);
