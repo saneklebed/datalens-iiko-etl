@@ -317,8 +317,8 @@ namespace RoomBroomChainPlugin.Diadoc
             return list;
         }
 
-        /// <summary>GET /V3/GetDocuments (входящие или черновики).</summary>
-        public async Task<List<DiadocDocumentRow>> GetDocumentsAsync(string boxId, bool incoming)
+        /// <summary>GET /V3/GetDocuments (входящие или черновики). fromDate/toDate в формате ДД.ММ.ГГГГ.</summary>
+        public async Task<List<DiadocDocumentRow>> GetDocumentsAsync(string boxId, bool incoming, DateTime? fromDate = null, DateTime? toDate = null)
         {
             if (string.IsNullOrWhiteSpace(boxId))
                 throw new InvalidOperationException(
@@ -331,6 +331,10 @@ namespace RoomBroomChainPlugin.Diadoc
             pq.Append("&filterCategory=").Append(Uri.EscapeDataString(filter));
             pq.Append("&count=100");
             pq.Append("&sortDirection=Descending");
+            if (fromDate.HasValue)
+                pq.Append("&fromDocumentDate=").Append(Uri.EscapeDataString(fromDate.Value.ToString("dd.MM.yyyy")));
+            if (toDate.HasValue)
+                pq.Append("&toDocumentDate=").Append(Uri.EscapeDataString(toDate.Value.ToString("dd.MM.yyyy")));
 
             var json = await PerformRequestAsync("GET", pq.ToString(), AuthHeader())
                 .ConfigureAwait(false);
@@ -342,13 +346,31 @@ namespace RoomBroomChainPlugin.Diadoc
 
             foreach (var d in arr)
             {
+                var meta = d["Metadata"] as JArray;
+                string totalSum = null, totalVat = null;
+                if (meta != null)
+                {
+                    foreach (var m in meta)
+                    {
+                        var k = (string)m["Key"];
+                        var v = (string)m["Value"];
+                        if (k == "TotalSum") totalSum = v;
+                        else if (k == "TotalVat") totalVat = v;
+                    }
+                }
+                var statusText = (string)(d["DocflowStatus"]?["PrimaryStatus"]?["StatusText"]);
+                var sender = (string)(d["CounterpartyName"] ?? d["SenderName"]);
                 list.Add(new DiadocDocumentRow
                 {
                     MessageId = (string)d["MessageId"],
                     EntityId = (string)d["EntityId"],
                     DocumentNumber = (string)d["DocumentNumber"],
                     DocumentDate = (string)d["DocumentDate"],
-                    CounterpartyName = (string)d["CounterpartyName"]
+                    CounterpartyName = sender,
+                    Supplier = sender,
+                    TotalAmount = totalSum,
+                    TotalVat = totalVat,
+                    StatusText = statusText
                 });
             }
             return list;
@@ -375,8 +397,20 @@ namespace RoomBroomChainPlugin.Diadoc
     {
         public string MessageId { get; set; }
         public string EntityId { get; set; }
+        /// <summary>Отправитель (для колонки «Отправитель»).</summary>
+        public string CounterpartyName { get; set; }
         public string DocumentNumber { get; set; }
         public string DocumentDate { get; set; }
-        public string CounterpartyName { get; set; }
+        public string TotalAmount { get; set; }
+        public string TotalVat { get; set; }
+        public string StatusText { get; set; }
+        /// <summary>ИНН контрагента, если есть в ответе API.</summary>
+        public string CounterpartyInn { get; set; }
+        /// <summary>Отправлен в ЗДО — дата доставки, при необходимости можно заполнять из API.</summary>
+        public string SentToEdo { get; set; }
+        /// <summary>Поставщик (для входящих = отправитель).</summary>
+        public string Supplier { get; set; }
+        /// <summary>Накладная IIKO — при интеграции с iiko.</summary>
+        public string IikoInvoice { get; set; }
     }
 }

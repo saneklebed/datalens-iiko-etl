@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using DevExpress.Utils;
 using DevExpress.XtraEditors;
 using DevExpress.XtraEditors.Controls;
 using DevExpress.XtraGrid.Views.Grid;
@@ -19,6 +20,10 @@ namespace Pages
         private SimpleButton _btnDrafts;
         private SimpleButton _btnCounteragents;
         private SimpleButton _btnIncoming;
+        private PanelControl _filterPanel;
+        private DateEdit _dateFrom;
+        private DateEdit _dateTo;
+        private SimpleButton _btnFetchInvoices;
         private GridControl _grid;
         private GridView _gridView;
         private DiadocApiClient _client;
@@ -85,6 +90,51 @@ namespace Pages
             _btnCounteragents.Location = new Point(136, 8);
             _btnIncoming.Location = new Point(264, 8);
 
+            var now = DateTime.Now;
+            _filterPanel = new PanelControl
+            {
+                Dock = DockStyle.Top,
+                Height = 40,
+                Padding = new Padding(8, 4, 8, 4),
+                Visible = false
+            };
+            var labelFrom = new LabelControl { Text = "С", AutoSizeMode = LabelAutoSizeMode.None };
+            _dateFrom = new DateEdit
+            {
+                Width = 100,
+                EditValue = new DateTime(now.Year, now.Month, 1)
+            };
+            _dateFrom.Properties.DisplayFormat.FormatString = "dd.MM.yyyy";
+            _dateFrom.Properties.DisplayFormat.FormatType = FormatType.DateTime;
+            _dateFrom.Properties.EditFormat.FormatString = "dd.MM.yyyy";
+            _dateFrom.Properties.EditFormat.FormatType = FormatType.DateTime;
+            _dateFrom.Properties.Mask.EditMask = "dd.MM.yyyy";
+            _dateFrom.Properties.Mask.UseMaskAsDisplayFormat = true;
+            var labelTo = new LabelControl { Text = "По", AutoSizeMode = LabelAutoSizeMode.None };
+            _dateTo = new DateEdit
+            {
+                Width = 100,
+                EditValue = new DateTime(now.Year, now.Month, DateTime.DaysInMonth(now.Year, now.Month))
+            };
+            _dateTo.Properties.DisplayFormat.FormatString = "dd.MM.yyyy";
+            _dateTo.Properties.DisplayFormat.FormatType = FormatType.DateTime;
+            _dateTo.Properties.EditFormat.FormatString = "dd.MM.yyyy";
+            _dateTo.Properties.EditFormat.FormatType = FormatType.DateTime;
+            _dateTo.Properties.Mask.EditMask = "dd.MM.yyyy";
+            _dateTo.Properties.Mask.UseMaskAsDisplayFormat = true;
+            _btnFetchInvoices = new SimpleButton { Text = "Получить накладные", Width = 160 };
+            _btnFetchInvoices.Click += (s, e) => RefreshIncomingDocumentsAsync();
+            _filterPanel.Controls.Add(labelFrom);
+            _filterPanel.Controls.Add(_dateFrom);
+            _filterPanel.Controls.Add(labelTo);
+            _filterPanel.Controls.Add(_dateTo);
+            _filterPanel.Controls.Add(_btnFetchInvoices);
+            labelFrom.Location = new Point(8, 10);
+            _dateFrom.Location = new Point(28, 8);
+            labelTo.Location = new Point(136, 10);
+            _dateTo.Location = new Point(156, 8);
+            _btnFetchInvoices.Location = new Point(268, 8);
+
             _grid = new GridControl { Dock = DockStyle.Fill };
             _gridView = new GridView(_grid);
             _grid.MainView = _gridView;
@@ -95,6 +145,7 @@ namespace Pages
             _gridView.OptionsView.ShowGroupPanel = false;
 
             Controls.Add(_grid);
+            Controls.Add(_filterPanel);
             Controls.Add(buttonsPanel);
             Controls.Add(topPanel);
 
@@ -107,7 +158,14 @@ namespace Pages
         private void SetMode(string mode)
         {
             _currentMode = mode;
-            RefreshCurrentViewAsync();
+            _filterPanel.Visible = (mode == ModeIncoming);
+            if (mode == ModeIncoming)
+            {
+                _grid.DataSource = new List<DiadocDocumentRow>();
+                ApplyDocumentsColumns();
+            }
+            else
+                RefreshCurrentViewAsync();
         }
 
         private void OnSelectionChanged()
@@ -152,6 +210,47 @@ namespace Pages
             }
         }
 
+        private void ApplyDocumentsColumns()
+        {
+            _gridView.PopulateColumns();
+            var cols = _gridView.Columns;
+            if (cols["MessageId"] != null) cols["MessageId"].Visible = false;
+            if (cols["EntityId"] != null) cols["EntityId"].Visible = false;
+            if (cols["CounterpartyName"] != null) { cols["CounterpartyName"].Caption = "Отправитель"; cols["CounterpartyName"].VisibleIndex = 0; }
+            if (cols["CounterpartyInn"] != null) { cols["CounterpartyInn"].Caption = "ИНН"; cols["CounterpartyInn"].VisibleIndex = 1; }
+            if (cols["DocumentNumber"] != null) { cols["DocumentNumber"].Caption = "Номер"; cols["DocumentNumber"].VisibleIndex = 2; }
+            if (cols["DocumentDate"] != null) { cols["DocumentDate"].Caption = "От"; cols["DocumentDate"].VisibleIndex = 3; }
+            if (cols["SentToEdo"] != null) { cols["SentToEdo"].Caption = "Отправлен в ЭДО"; cols["SentToEdo"].VisibleIndex = 4; }
+            if (cols["TotalVat"] != null) { cols["TotalVat"].Caption = "Сумма НДС"; cols["TotalVat"].VisibleIndex = 5; }
+            if (cols["TotalAmount"] != null) { cols["TotalAmount"].Caption = "Сумма"; cols["TotalAmount"].VisibleIndex = 6; }
+            if (cols["StatusText"] != null) { cols["StatusText"].Caption = "Статус"; cols["StatusText"].VisibleIndex = 7; }
+            if (cols["Supplier"] != null) { cols["Supplier"].Caption = "Поставщик"; cols["Supplier"].VisibleIndex = 8; }
+            if (cols["IikoInvoice"] != null) { cols["IikoInvoice"].Caption = "Накладная ЭДО"; cols["IikoInvoice"].VisibleIndex = 9; }
+        }
+
+        private async void RefreshIncomingDocumentsAsync()
+        {
+            if (_client == null) return;
+            var boxId = GetSelectedBoxId();
+            if (string.IsNullOrEmpty(boxId))
+            {
+                XtraMessageBox.Show("Выберите юр. лицо.", "Входящие", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            var from = _dateFrom.EditValue as DateTime? ?? new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
+            var to = _dateTo.EditValue as DateTime? ?? DateTime.Now;
+            try
+            {
+                var list = await Task.Run(async () => await _client.GetDocumentsAsync(boxId, true, from, to).ConfigureAwait(false)).ConfigureAwait(true);
+                _grid.DataSource = list ?? new List<DiadocDocumentRow>();
+                ApplyDocumentsColumns();
+            }
+            catch (Exception ex)
+            {
+                XtraMessageBox.Show(ex.Message, "Ошибка Диадока", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
         private async void RefreshCurrentViewAsync()
         {
             if (_client == null) return;
@@ -175,12 +274,19 @@ namespace Pages
                     _gridView.Columns["Kpp"].Visible = true;
                     _gridView.Columns["Kpp"].Caption = "КПП";
                 }
-                else if (_currentMode == ModeIncoming || _currentMode == ModeDrafts)
+                else if (_currentMode == ModeIncoming)
                 {
-                    var incoming = _currentMode == ModeIncoming;
-                    var list = await Task.Run(async () => await _client.GetDocumentsAsync(boxId, incoming).ConfigureAwait(false)).ConfigureAwait(true);
+                    var from = _dateFrom.EditValue as DateTime? ?? new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
+                    var to = _dateTo.EditValue as DateTime? ?? DateTime.Now;
+                    var list = await Task.Run(async () => await _client.GetDocumentsAsync(boxId, true, from, to).ConfigureAwait(false)).ConfigureAwait(true);
                     _grid.DataSource = list ?? new List<DiadocDocumentRow>();
-                    _gridView.PopulateColumns();
+                    ApplyDocumentsColumns();
+                }
+                else if (_currentMode == ModeDrafts)
+                {
+                    var list = await Task.Run(async () => await _client.GetDocumentsAsync(boxId, false).ConfigureAwait(false)).ConfigureAwait(true);
+                    _grid.DataSource = list ?? new List<DiadocDocumentRow>();
+                    ApplyDocumentsColumns();
                 }
             }
             catch (Exception ex)
