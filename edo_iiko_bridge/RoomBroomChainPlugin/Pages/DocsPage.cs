@@ -7,6 +7,7 @@ using System.Windows.Forms;
 using DevExpress.Utils;
 using DevExpress.XtraEditors;
 using DevExpress.XtraEditors.Controls;
+
 using DevExpress.XtraGrid.Views.Grid;
 using DevExpress.XtraGrid;
 using RoomBroomChainPlugin.Config;
@@ -99,29 +100,23 @@ namespace Pages
                 Visible = false
             };
             var labelFrom = new LabelControl { Text = "С", AutoSizeMode = LabelAutoSizeMode.None };
-            _dateFrom = new DateEdit
-            {
-                Width = 120,
-                EditValue = new DateTime(now.Year, now.Month, 1)
-            };
+            _dateFrom = new DateEdit { Size = new Size(194, 22) };
             var labelTo = new LabelControl { Text = "По", AutoSizeMode = LabelAutoSizeMode.None };
-            _dateTo = new DateEdit
-            {
-                Width = 120,
-                EditValue = new DateTime(now.Year, now.Month, DateTime.DaysInMonth(now.Year, now.Month))
-            };
-            _btnFetchInvoices = new SimpleButton { Text = "Получить накладные", Width = 160 };
+            _dateTo = new DateEdit { Size = new Size(194, 22) };
+            _dateFrom.DateTime = new DateTime(now.Year, now.Month, 1);
+            _dateTo.DateTime = new DateTime(now.Year, now.Month, DateTime.DaysInMonth(now.Year, now.Month));
+            _btnFetchInvoices = new SimpleButton { Text = "Получить накладные", Width = 165 };
             _btnFetchInvoices.Click += (s, e) => RefreshIncomingDocumentsAsync();
             _filterPanel.Controls.Add(labelFrom);
             _filterPanel.Controls.Add(_dateFrom);
             _filterPanel.Controls.Add(labelTo);
             _filterPanel.Controls.Add(_dateTo);
             _filterPanel.Controls.Add(_btnFetchInvoices);
-            labelFrom.Location = new Point(8, 10);
-            _dateFrom.Location = new Point(28, 8);
-            labelTo.Location = new Point(156, 10);
-            _dateTo.Location = new Point(176, 8);
-            _btnFetchInvoices.Location = new Point(308, 8);
+            labelFrom.Location = new Point(22, 15);
+            _dateFrom.Location = new Point(48, 11);
+            labelTo.Location = new Point(249, 15);
+            _dateTo.Location = new Point(281, 11);
+            _btnFetchInvoices.Location = new Point(509, 9);
 
             _grid = new GridControl { Dock = DockStyle.Fill };
             _gridView = new GridView(_grid);
@@ -225,8 +220,8 @@ namespace Pages
                 XtraMessageBox.Show("Выберите юр. лицо.", "Входящие", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-            var from = _dateFrom.EditValue as DateTime? ?? new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
-            var to = _dateTo.EditValue as DateTime? ?? DateTime.Now;
+            var from = _dateFrom.DateTime;
+            var to = _dateTo.DateTime;
             try
             {
                 var list = await Task.Run(async () => await _client.GetDocumentsAsync(boxId, true, from, to).ConfigureAwait(false)).ConfigureAwait(true);
@@ -264,8 +259,8 @@ namespace Pages
                 }
                 else if (_currentMode == ModeIncoming)
                 {
-                    var from = _dateFrom.EditValue as DateTime? ?? new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
-                    var to = _dateTo.EditValue as DateTime? ?? DateTime.Now;
+                    var from = _dateFrom.DateTime;
+                    var to = _dateTo.DateTime;
                     var list = await Task.Run(async () => await _client.GetDocumentsAsync(boxId, true, from, to).ConfigureAwait(false)).ConfigureAwait(true);
                     _grid.DataSource = list ?? new List<DiadocDocumentRow>();
                     ApplyDocumentsColumns();
