@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("RoomBroomChainPlugin")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+4fccbe37bbc9afe52d811b9ca96943f29b6c65d8")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+5a387af5c8ed6a57b054129185e8bfb5570b891e")]
 [assembly: System.Reflection.AssemblyProductAttribute("RoomBroomChainPlugin")]
 [assembly: System.Reflection.AssemblyTitleAttribute("RoomBroomChainPlugin")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

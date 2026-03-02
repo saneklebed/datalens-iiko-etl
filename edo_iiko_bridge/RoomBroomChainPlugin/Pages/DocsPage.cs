@@ -101,21 +101,15 @@ namespace Pages
             var labelFrom = new LabelControl { Text = "С", AutoSizeMode = LabelAutoSizeMode.None };
             _dateFrom = new DateEdit
             {
-                Width = 100,
+                Width = 120,
                 EditValue = new DateTime(now.Year, now.Month, 1)
             };
-            _dateFrom.Properties.Mask.MaskType = DevExpress.XtraEditors.Mask.MaskType.None;
-            _dateFrom.Properties.DisplayFormat.FormatString = "dd.MM.yyyy";
-            _dateFrom.Properties.DisplayFormat.FormatType = FormatType.DateTime;
             var labelTo = new LabelControl { Text = "По", AutoSizeMode = LabelAutoSizeMode.None };
             _dateTo = new DateEdit
             {
-                Width = 100,
+                Width = 120,
                 EditValue = new DateTime(now.Year, now.Month, DateTime.DaysInMonth(now.Year, now.Month))
             };
-            _dateTo.Properties.Mask.MaskType = DevExpress.XtraEditors.Mask.MaskType.None;
-            _dateTo.Properties.DisplayFormat.FormatString = "dd.MM.yyyy";
-            _dateTo.Properties.DisplayFormat.FormatType = FormatType.DateTime;
             _btnFetchInvoices = new SimpleButton { Text = "Получить накладные", Width = 160 };
             _btnFetchInvoices.Click += (s, e) => RefreshIncomingDocumentsAsync();
             _filterPanel.Controls.Add(labelFrom);
@@ -125,9 +119,9 @@ namespace Pages
             _filterPanel.Controls.Add(_btnFetchInvoices);
             labelFrom.Location = new Point(8, 10);
             _dateFrom.Location = new Point(28, 8);
-            labelTo.Location = new Point(136, 10);
-            _dateTo.Location = new Point(156, 8);
-            _btnFetchInvoices.Location = new Point(268, 8);
+            labelTo.Location = new Point(156, 10);
+            _dateTo.Location = new Point(176, 8);
+            _btnFetchInvoices.Location = new Point(308, 8);
 
             _grid = new GridControl { Dock = DockStyle.Fill };
             _gridView = new GridView(_grid);
