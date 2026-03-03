@@ -10,3 +10,7 @@ Suppressed: java.time.format.DateTimeParseException: Text '2026-03-03' could not
 
 2026-03-03T18:52:37 storeId=8a22283d-5c13-4172-8f10-2c499fcce4c8 supplierId=da52bbfb-f9a0-4ddd-8b40-05879770e9e0
 2026-03-03T18:52:37 POST https://oreks-co.iiko.it:443/resto/api/documents/import/incomingInvoice?key=49c67195-ac32-0621-66f0-b6b93daacca5 bodyLength=1911
+2026-03-03T19:17:41 storeId=79d6636d-7fe0-4a1b-adbc-bf3def4ca91e supplierId=da52bbfb-f9a0-4ddd-8b40-05879770e9e0
+2026-03-03T19:17:41 POST https://oreks-co.iiko.it:443/resto/api/documents/import/incomingInvoice?key=5b7d70bf-9dd2-5e58-c603-450ed21f1e95 bodyLength=1938
+2026-03-03T19:18:34 storeId=79d6636d-7fe0-4a1b-adbc-bf3def4ca91e supplierId=da52bbfb-f9a0-4ddd-8b40-05879770e9e0
+2026-03-03T19:18:34 POST https://oreks-co.iiko.it:443/resto/api/documents/import/incomingInvoice?key=0c9589e2-8392-e7b6-ed52-2c9703b5df05 bodyLength=1938

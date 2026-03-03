@@ -28,7 +28,8 @@ namespace RoomBroomChainPlugin.Iiko
     public class SupplierPricelistItem
     {
         public string NativeProduct { get; set; }       // guid нашего товара
-        public string NativeProductNum { get; set; }     // артикул у нас
+        public string NativeProductNum { get; set; }   // артикул у нас
+        public string NativeProductName { get; set; }   // наименование товара в iiko (если есть в ответе API)
         public string SupplierProductNum { get; set; }  // артикул у поставщика
         public string SupplierProductCode { get; set; } // код у поставщика
     }
@@ -532,6 +533,8 @@ namespace RoomBroomChainPlugin.Iiko
 
                     var nativeProduct = (string)el.Element("nativeProduct") ?? (string)el.Element("NativeProduct");
                     var nativeProductNum = (string)el.Element("nativeProductNum") ?? (string)el.Element("NativeProductNum");
+                    var nativeProductName = (string)el.Element("nativeProductName") ?? (string)el.Element("NativeProductName")
+                        ?? (string)el.Element("productName") ?? (string)el.Element("name");
                     var supplierProductNum = (string)el.Element("supplierProductNum") ?? (string)el.Element("SupplierProductNum");
                     var supplierProductCode = (string)el.Element("supplierProductCode") ?? (string)el.Element("SupplierProductCode");
                     if (string.IsNullOrWhiteSpace(nativeProduct) && string.IsNullOrWhiteSpace(nativeProductNum))
@@ -541,6 +544,7 @@ namespace RoomBroomChainPlugin.Iiko
                     {
                         NativeProduct = nativeProduct ?? "",
                         NativeProductNum = nativeProductNum ?? "",
+                        NativeProductName = nativeProductName ?? "",
                         SupplierProductNum = supplierProductNum ?? "",
                         SupplierProductCode = supplierProductCode ?? ""
                     });
@@ -555,6 +559,19 @@ namespace RoomBroomChainPlugin.Iiko
         }
 
         /// <summary>
+        /// Проведение приходной накладной: POST /resto/api/documents/process/incomingInvoice.
+        /// Тело — структура document (incomingInvoiceDto), как при импорте. Аналог распроведения (unprocess).
+        /// </summary>
+        public async Task<DocumentValidationResult> ProcessIncomingInvoiceAsync(string xmlBody)
+        {
+            if (string.IsNullOrWhiteSpace(xmlBody))
+                throw new ArgumentException("xmlBody");
+
+            var raw = await PostXmlAsync("api/documents/process/incomingInvoice", xmlBody, debug: true).ConfigureAwait(false);
+            return ParseDocumentValidationResult(raw);
+        }
+
+        /// <summary>
         /// Импорт приходной накладной: POST /resto/api/documents/import/incomingInvoice.
         /// </summary>
         public async Task<DocumentValidationResult> ImportIncomingInvoiceAsync(string xmlBody)
@@ -563,20 +580,23 @@ namespace RoomBroomChainPlugin.Iiko
                 throw new ArgumentException("xmlBody");
 
             var raw = await PostXmlAsync("api/documents/import/incomingInvoice", xmlBody, debug: true).ConfigureAwait(false);
-            var result = new DocumentValidationResult
-            {
-                RawXml = raw ?? ""
-            };
+            var result = ParseDocumentValidationResult(raw);
+            if (result != null)
+                result.RawXml = raw ?? "";
+            return result ?? new DocumentValidationResult { RawXml = raw ?? "" };
+        }
 
+        private static DocumentValidationResult ParseDocumentValidationResult(string raw)
+        {
             if (string.IsNullOrWhiteSpace(raw))
-                return result;
+                return new DocumentValidationResult { RawXml = raw ?? "" };
 
             try
             {
                 var doc = XDocument.Parse(raw);
                 var root = doc.Root;
                 if (root == null || root.Name.LocalName != "documentValidationResult")
-                    return result;
+                    return new DocumentValidationResult { RawXml = raw };
 
                 var docNumber = (string)root.Element("documentNumber") ?? (string)root.Element("DocumentNumber");
                 bool? valid = null, warning = null;
@@ -587,14 +607,17 @@ namespace RoomBroomChainPlugin.Iiko
                 if (warnEl != null && bool.TryParse(warnEl.Value, out var w))
                     warning = w;
 
-                result.DocumentNumber = docNumber;
-                result.Valid = valid;
-                result.Warning = warning;
-                return result;
+                return new DocumentValidationResult
+                {
+                    RawXml = raw,
+                    DocumentNumber = docNumber,
+                    Valid = valid,
+                    Warning = warning
+                };
             }
             catch
             {
-                return result;
+                return new DocumentValidationResult { RawXml = raw };
             }
         }
     }

@@ -388,24 +388,28 @@ namespace Pages
                 _currentDocument = row;
                 _currentItems = items ?? Array.Empty<UtdItemRow>();
 
+                await FillIikoProductNamesAsync().ConfigureAwait(true);
+
                 _detailsGrid.DataSource = _currentItems;
                 _detailsView.PopulateColumns();
 
                 if (_detailsView.Columns["Product"] != null) _detailsView.Columns["Product"].Visible = false;
                 if (_detailsView.Columns["Gtin"] != null) _detailsView.Columns["Gtin"].Visible = false;
                 if (_detailsView.Columns["ItemAdditionalInfo"] != null) _detailsView.Columns["ItemAdditionalInfo"].Visible = false;
-                if (_detailsView.Columns["Unit"] != null) _detailsView.Columns["Unit"].Visible = false;
 
+                // Порядок колонок как в iiko: код/название у поставщика → тара → наименование у нас → единица измерения → кол-во → цена → суммы
                 int col = 0;
                 if (_detailsView.Columns["LineIndex"] != null) { _detailsView.Columns["LineIndex"].Caption = "№"; _detailsView.Columns["LineIndex"].VisibleIndex = col++; }
                 if (_detailsView.Columns["ItemVendorCode"] != null) { _detailsView.Columns["ItemVendorCode"].Caption = "Код поставщика"; _detailsView.Columns["ItemVendorCode"].VisibleIndex = col++; }
-                if (_detailsView.Columns["SupplierProductName"] != null) { _detailsView.Columns["SupplierProductName"].Caption = "Наименование у поставщика"; _detailsView.Columns["SupplierProductName"].VisibleIndex = col++; }
+                if (_detailsView.Columns["SupplierProductName"] != null) { _detailsView.Columns["SupplierProductName"].Caption = "Название у поставщика"; _detailsView.Columns["SupplierProductName"].VisibleIndex = col++; }
                 if (_detailsView.Columns["UnitName"] != null) { _detailsView.Columns["UnitName"].Caption = "Тара"; _detailsView.Columns["UnitName"].VisibleIndex = col++; }
+                if (_detailsView.Columns["IikoProductName"] != null) { _detailsView.Columns["IikoProductName"].Caption = "Наименование товара iiko"; _detailsView.Columns["IikoProductName"].VisibleIndex = col++; }
+                if (_detailsView.Columns["Unit"] != null) { _detailsView.Columns["Unit"].Caption = "В таре"; _detailsView.Columns["Unit"].VisibleIndex = col++; }
                 if (_detailsView.Columns["Quantity"] != null) { _detailsView.Columns["Quantity"].Caption = "Кол-во"; _detailsView.Columns["Quantity"].VisibleIndex = col++; }
-                if (_detailsView.Columns["Price"] != null) { _detailsView.Columns["Price"].Caption = "Цена"; _detailsView.Columns["Price"].VisibleIndex = col++; }
-                if (_detailsView.Columns["Subtotal"] != null) { _detailsView.Columns["Subtotal"].Caption = "Сумма"; _detailsView.Columns["Subtotal"].VisibleIndex = col++; }
+                if (_detailsView.Columns["Price"] != null) { _detailsView.Columns["Price"].Caption = "Цена за ед."; _detailsView.Columns["Price"].VisibleIndex = col++; }
+                if (_detailsView.Columns["Subtotal"] != null) { _detailsView.Columns["Subtotal"].Caption = "Сумма с НДС"; _detailsView.Columns["Subtotal"].VisibleIndex = col++; }
                 if (_detailsView.Columns["Vat"] != null) { _detailsView.Columns["Vat"].Caption = "Сумма НДС"; _detailsView.Columns["Vat"].VisibleIndex = col++; }
-                if (_detailsView.Columns["ItemArticle"] != null) { _detailsView.Columns["ItemArticle"].Caption = "Артикул"; _detailsView.Columns["ItemArticle"].VisibleIndex = col++; }
+                if (_detailsView.Columns["ItemArticle"] != null) _detailsView.Columns["ItemArticle"].Visible = false;
 
                 await EnsureStoresLoadedAsync().ConfigureAwait(true);
                 PopulateStoresCombo();
@@ -459,6 +463,48 @@ namespace Pages
             catch
             {
                 _stores = new List<IikoStore>();
+            }
+        }
+
+        /// <summary>Заполняет IikoProductName у строк накладной из прайс-листа поставщика (наименование товара в iiko).</summary>
+        private async Task FillIikoProductNamesAsync()
+        {
+            if (_currentItems == null || _currentItems.Length == 0 || _currentDocument == null || _iikoClient == null)
+                return;
+            if (string.IsNullOrWhiteSpace(_currentDocument.IikoSupplierId))
+                return;
+
+            var supplierPricelistKey = _currentDocument.IikoSupplierId;
+            var sup = _suppliers?.FirstOrDefault(s => s.Id == _currentDocument.IikoSupplierId);
+            if (sup != null && !string.IsNullOrWhiteSpace(sup.Code))
+                supplierPricelistKey = sup.Code;
+
+            var pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierPricelistKey).ConfigureAwait(true);
+            if (pricelist == null || pricelist.Count == 0)
+                return;
+
+            var codeToName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var row in pricelist)
+            {
+                if (string.IsNullOrWhiteSpace(row.NativeProductName))
+                    continue;
+                if (!string.IsNullOrWhiteSpace(row.SupplierProductNum))
+                    codeToName[row.SupplierProductNum.Trim()] = row.NativeProductName;
+                if (!string.IsNullOrWhiteSpace(row.SupplierProductCode))
+                    codeToName[row.SupplierProductCode.Trim()] = row.NativeProductName;
+            }
+
+            foreach (var it in _currentItems)
+            {
+                var code = (it.ItemVendorCode ?? "").Trim();
+                if (!string.IsNullOrEmpty(code) && codeToName.TryGetValue(code, out var name))
+                {
+                    it.IikoProductName = name;
+                    continue;
+                }
+                code = (it.ItemArticle ?? "").Trim();
+                if (!string.IsNullOrEmpty(code) && codeToName.TryGetValue(code, out var name2))
+                    it.IikoProductName = name2;
             }
         }
 
@@ -531,12 +577,15 @@ namespace Pages
         }
 
         /// <param name="supplierCodeToNativeProductGuid">Маппинг «код/артикул поставщика» → guid нашего товара в iiko (из прайс-листа поставщика).</param>
+        /// <param name="createWithPosting">Если true, в XML добавляется проведение документа (conducted).</param>
         private string BuildIncomingInvoiceXml(DiadocDocumentRow doc, UtdItemRow[] items, string supplierId, string storeId,
-            Dictionary<string, string> supplierCodeToNativeProductGuid = null)
+            Dictionary<string, string> supplierCodeToNativeProductGuid = null, bool createWithPosting = false)
         {
             var xDoc = new XDocument();
             var root = new XElement("document");
             xDoc.Add(root);
+
+            // Проведение делаем отдельным вызовом ProcessIncomingInvoiceAsync после импорта (см. UploadToIikoAsync).
 
             var itemsEl = new XElement("items");
             root.Add(itemsEl);
@@ -664,12 +713,29 @@ namespace Pages
                     }
                 }
 
-                var xml = BuildIncomingInvoiceXml(_currentDocument, _currentItems, _currentDocument.IikoSupplierId, storeId, supplierCodeToNativeGuid);
+                var cfg = ConfigStore.Load();
+                var createWithPosting = cfg != null && cfg.CreateInvoiceWithPosting;
+                var xml = BuildIncomingInvoiceXml(_currentDocument, _currentItems, _currentDocument.IikoSupplierId, storeId, supplierCodeToNativeGuid, createWithPosting: false);
                 var result = await _iikoClient.ImportIncomingInvoiceAsync(xml).ConfigureAwait(true);
+
+                if (result.Valid == true && createWithPosting)
+                {
+                    try
+                    {
+                        var processResult = await _iikoClient.ProcessIncomingInvoiceAsync(xml).ConfigureAwait(true);
+                        if (processResult.Valid != true)
+                            IikoLog.Write("ProcessIncomingInvoiceAsync: valid=" + processResult.Valid + " raw=" + (processResult.RawXml ?? "").Replace(Environment.NewLine, " "));
+                    }
+                    catch (Exception ex)
+                    {
+                        IikoLog.Write("ProcessIncomingInvoiceAsync error: " + ex.Message);
+                        XtraMessageBox.Show("Накладная создана, но не проведена: " + ex.Message, "Выгрузка в iiko", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
+                }
 
                 var valid = result.Valid == true;
                 var msg = valid
-                    ? $"Накладная в iiko успешно создана (№ {result.DocumentNumber ?? _currentDocument.DocumentNumber})."
+                    ? $"Накладная в iiko успешно создана (№ {result.DocumentNumber ?? _currentDocument.DocumentNumber})." + (createWithPosting ? " Документ проведён." : "")
                     : "Ответ iiko получен, но документ не прошёл валидацию. Проверьте детали в журнале.";
 
                 if (!string.IsNullOrEmpty(result.RawXml))
