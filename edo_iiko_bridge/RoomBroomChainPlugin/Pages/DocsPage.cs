@@ -388,28 +388,25 @@ namespace Pages
                 _currentDocument = row;
                 _currentItems = items ?? Array.Empty<UtdItemRow>();
 
-                await FillIikoProductNamesAsync().ConfigureAwait(true);
-
                 _detailsGrid.DataSource = _currentItems;
                 _detailsView.PopulateColumns();
 
                 if (_detailsView.Columns["Product"] != null) _detailsView.Columns["Product"].Visible = false;
                 if (_detailsView.Columns["Gtin"] != null) _detailsView.Columns["Gtin"].Visible = false;
                 if (_detailsView.Columns["ItemAdditionalInfo"] != null) _detailsView.Columns["ItemAdditionalInfo"].Visible = false;
+                if (_detailsView.Columns["Unit"] != null) _detailsView.Columns["Unit"].Visible = false;
+                // Артикул дублирует «Код поставщика» — не показываем при провале в накладную
+                if (_detailsView.Columns["ItemArticle"] != null) _detailsView.Columns["ItemArticle"].Visible = false;
 
-                // Порядок колонок как в iiko: код/название у поставщика → тара → наименование у нас → единица измерения → кол-во → цена → суммы
                 int col = 0;
                 if (_detailsView.Columns["LineIndex"] != null) { _detailsView.Columns["LineIndex"].Caption = "№"; _detailsView.Columns["LineIndex"].VisibleIndex = col++; }
                 if (_detailsView.Columns["ItemVendorCode"] != null) { _detailsView.Columns["ItemVendorCode"].Caption = "Код поставщика"; _detailsView.Columns["ItemVendorCode"].VisibleIndex = col++; }
-                if (_detailsView.Columns["SupplierProductName"] != null) { _detailsView.Columns["SupplierProductName"].Caption = "Название у поставщика"; _detailsView.Columns["SupplierProductName"].VisibleIndex = col++; }
+                if (_detailsView.Columns["SupplierProductName"] != null) { _detailsView.Columns["SupplierProductName"].Caption = "Наименование у поставщика"; _detailsView.Columns["SupplierProductName"].VisibleIndex = col++; }
                 if (_detailsView.Columns["UnitName"] != null) { _detailsView.Columns["UnitName"].Caption = "Тара"; _detailsView.Columns["UnitName"].VisibleIndex = col++; }
-                if (_detailsView.Columns["IikoProductName"] != null) { _detailsView.Columns["IikoProductName"].Caption = "Наименование товара iiko"; _detailsView.Columns["IikoProductName"].VisibleIndex = col++; }
-                if (_detailsView.Columns["Unit"] != null) { _detailsView.Columns["Unit"].Caption = "В таре"; _detailsView.Columns["Unit"].VisibleIndex = col++; }
                 if (_detailsView.Columns["Quantity"] != null) { _detailsView.Columns["Quantity"].Caption = "Кол-во"; _detailsView.Columns["Quantity"].VisibleIndex = col++; }
-                if (_detailsView.Columns["Price"] != null) { _detailsView.Columns["Price"].Caption = "Цена за ед."; _detailsView.Columns["Price"].VisibleIndex = col++; }
-                if (_detailsView.Columns["Subtotal"] != null) { _detailsView.Columns["Subtotal"].Caption = "Сумма с НДС"; _detailsView.Columns["Subtotal"].VisibleIndex = col++; }
+                if (_detailsView.Columns["Price"] != null) { _detailsView.Columns["Price"].Caption = "Цена"; _detailsView.Columns["Price"].VisibleIndex = col++; }
+                if (_detailsView.Columns["Subtotal"] != null) { _detailsView.Columns["Subtotal"].Caption = "Сумма"; _detailsView.Columns["Subtotal"].VisibleIndex = col++; }
                 if (_detailsView.Columns["Vat"] != null) { _detailsView.Columns["Vat"].Caption = "Сумма НДС"; _detailsView.Columns["Vat"].VisibleIndex = col++; }
-                if (_detailsView.Columns["ItemArticle"] != null) _detailsView.Columns["ItemArticle"].Visible = false;
 
                 await EnsureStoresLoadedAsync().ConfigureAwait(true);
                 PopulateStoresCombo();
