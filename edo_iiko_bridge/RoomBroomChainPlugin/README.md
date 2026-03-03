@@ -1,84 +1,78 @@
-# RoomBroom — iikoChain Office plugin (пустые вкладки)
+# RoomBroom — iikoChain Office plugin (ЭДО-мост Diadoc)
 
 ## Важно: кто что делает
 
-- **Сборку ZIP делает тот, кто меняет код (в репо — AI).** После любого изменения кода плагина обязательно запускается `scripts/package.ps1`; на выходе — актуальный `dist/RoomBroomChainPlugin.zip`. Пользователю не предлагать «запусти скрипт» — пользователь не собирает.
-- **Твоя задача (пользователь)** — взять готовый `RoomBroomChainPlugin.zip` из папки `dist`, перенести в папку плагинов (например `C:\Program Files\iiko\iikoChain\Office\Plugins`), распаковать и тестировать в Chain.
+- **Сборку ZIP делает AI.** После любого изменения кода плагина AI обязан запустить `scripts/package.ps1` и получить актуальный `dist/RoomBroomChainPlugin.zip`. Пользователю НЕ предлагать «запусти скрипт».
+- **Задача пользователя** — взять готовый `RoomBroomChainPlugin.zip` из `dist`, перенести в папку плагинов iikoChain, распаковать и тестировать.
 
 ---
 
-Цель: получить в iikoChain Office **пункт в левой навигации** `RoomBroom` с двумя вкладками:
+## Что делает плагин
 
-- `Документы` — пустая страница
-- `Настройки` — пустая страница
+Плагин добавляет в iikoChain Office пункт **RoomBroom** с двумя вкладками:
 
-Плагин повторяет каркас EDI‑Doc:
+### Настройки
+- Логин, Пароль, API-токен Diadoc
+- Тогл создания накладных
+- Данные хранятся в локальных настройках iikoChain (SettingsMain, JSON)
 
-- `RBPlugin : INavBarPlugin, IPlugin` → `MenuGroup` → `MenuItem(TabPageFirst)` + `MenuItem(TabPageSecond)`
-- `TabPageFirst/Second : PluginTabPageBase` → `CreateControl()` возвращает `UserControl`
+### Документы
+- **Комбобокс юрлица** — загружается из Diadoc API (GetMyOrganizations)
+- **Три режима:**
+  - **Черновики** — структура есть, функционал минимальный
+  - **Контрагенты** — таблица Организация/ИНН/КПП. Пагинация (все контрагенты, не только 100). Сокращённые названия
+  - **Входящие** — фильтр по дате (DateEdit «С»/«По»), кнопка «Получить накладные». Колонки: Отправитель, ИНН, Номер, От, Отправлен в ЭДО, Сумма НДС, Сумма, Статус, Поставщик, Накладная ЭДО
+
+**Сопоставление документов с контрагентами:**
+- Отправитель/ИНН определяются через список контрагентов: сначала по CounteragentBoxId, затем по SellerInn (из Metadata)
+- Контрагенты кэшируются, сбрасываются при смене юрлица
+
+**Цветовая раскраска:**
+- Подписан → зелёный, Отказ/Отклонён → розовый
+- Поставщик найден → зелёный
+- Накладная заполнена → зелёный
+
+## Структура проекта
+
+```
+RoomBroomChainPlugin/
+├── Config/
+│   ├── ConfigStore.cs          # Чтение/запись настроек iikoChain
+│   ├── RoomBroomConfig.cs      # Модель настроек
+│   └── RoomBroomSettings.cs    # Ключи настроек
+├── Diadoc/
+│   └── DiadocApiClient.cs      # HTTP-клиент Diadoc API (HttpWebRequest)
+├── Pages/
+│   ├── DocsPage.cs             # UI вкладки «Документы»
+│   └── SettingsPage.cs         # UI вкладки «Настройки»
+├── scripts/
+│   └── package.ps1             # Сборка + ZIP
+└── dist/
+    └── RoomBroomChainPlugin.zip  # Готовый архив для развёртывания
+```
 
 ## Как собрать
 
 1) Скопируй `Directory.Build.props.example` → `Directory.Build.props`
-2) В `Directory.Build.props` укажи `IikoChainLibDir` — путь к папке iikoChain Office, где лежат:
-   - `Resto.BackApi.Core.dll`
-   - `Resto.BackApi.Core.Plugin.dll`
-
-Пример:
-
-`C:\Users\Orange\Desktop\iiko\iikoChain\Chain Office 8.5.8002.0\`
-
-3) Собери проект:
-
-```powershell
-dotnet build edo_iiko_bridge\RoomBroomChainPlugin\RoomBroomChainPlugin.csproj -c Release
-```
-
-## Настройки (как сохраняются)
-
-- Вкладка `Настройки` сохраняет значения в локальные настройки пользователя iikoChain (**`SettingsMain`**, JSON).
-- Это нужно, чтобы вкладка `Документы` могла читать креды Диадока без повторного ввода.
-- Реализация: `edo_iiko_bridge/RoomBroomChainPlugin/Config/ConfigStore.cs` + `Config/RoomBroomSettings.cs` + `Config/RoomBroomConfig.cs`.
-
-## Собрать ZIP “распаковать и работает”
-
-Запусти (PowerShell):
+2) Укажи `IikoChainLibDir` — путь к iikoChain Office (где лежат `Resto.BackApi.Core*.dll`)
+3) Собери:
 
 ```powershell
 .\edo_iiko_bridge\RoomBroomChainPlugin\scripts\package.ps1
 ```
 
-Если iikoChain Office установлен в `C:\Program Files\iiko\iikoChain\Office\`, то `Directory.Build.props` можно не создавать и собрать так:
+На выходе: `dist/RoomBroomChainPlugin.zip`
 
-```powershell
-.\edo_iiko_bridge\RoomBroomChainPlugin\scripts\package.ps1 -IikoChainLibDir "C:\Program Files\iiko\iikoChain\Office"
-```
+## Как установить
 
-На выходе будет `edo_iiko_bridge\RoomBroomChainPlugin\dist\RoomBroomChainPlugin.zip`.
+1) Возьми `dist/RoomBroomChainPlugin.zip`
+2) Распакуй в `C:\Program Files\iiko\iikoChain\Office\Plugins`
+3) Перезапусти iikoChain Office — появится пункт «RoomBroom»
 
-## Как установить (только развертывание готового ZIP)
+## Технические заметки
 
-1) **Возьми готовый ZIP** из `dist/RoomBroomChainPlugin.zip` (его создаёт скрипт упаковки) и **распакуй** в:
-
-`C:\Program Files\iiko\iikoChain\Office\Plugins`
-
-2) Либо вручную: возьми `bin\Release\RoomBroomChainPlugin.dll` и положи в:
-
-`C:\Program Files\iiko\iikoChain\Office\Plugins`
-
-3) Перезапусти iikoChain Office — появится пункт `RoomBroom` с вкладками `Документы` и `Настройки`.
-
-## Скачать ZIP через GitHub Actions (как “вчера”: запустил → скачал)
-
-Ограничение: GitHub Actions **не может собрать DLL сам**, потому что для сборки нужны библиотеки iikoChain (`Resto.BackApi.Core*.dll`) из установленного iikoChain Office.
-
-Поэтому делаем так:
-
-1) Один раз собираешь DLL локально:
-   - `dotnet build ... -c Release`
-2) Убеждаешься, что в репо есть файл:
-   - `edo_iiko_bridge/RoomBroomChainPlugin/bin/Release/RoomBroomChainPlugin.dll`
-   (его можно закоммитить, если ок хранить бинарник в Git)
-3) Запускаешь workflow **RoomBroom iikoChain plugin (ZIP)** в Actions.
-4) Скачиваешь artifact `RoomBroomChainPlugin.zip` и распаковываешь в `...\Office\Plugins`.
-
+- DevExpress **v16.2** (из iikoChain), а не v21.2
+- HttpWebRequest (не HttpClient) — аналог SDK Diadoc, работает в среде iikoChain
+- BoxId из API: убирать суффикс `@diadoc.ru` через `StripBoxIdDomain`
+- DateEdit: НЕ добавлять `Buttons.AddRange` (дефолт содержит Combo-кнопку). LabelControl рядом — задавать явный `Size`
+- Контрагенты: пагинация обязательна (afterIndexKey), иначе только первые 100

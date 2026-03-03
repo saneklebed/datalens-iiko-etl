@@ -8,6 +8,7 @@ using DevExpress.Utils;
 using DevExpress.XtraEditors;
 using DevExpress.XtraEditors.Controls;
 
+using DevExpress.XtraGrid.Views.Base;
 using DevExpress.XtraGrid.Views.Grid;
 using DevExpress.XtraGrid;
 using RoomBroomChainPlugin.Config;
@@ -29,6 +30,7 @@ namespace Pages
         private GridView _gridView;
         private DiadocApiClient _client;
         private List<DiadocOrg> _orgs = new List<DiadocOrg>();
+        private List<CounteragentRow> _counteragents;
         private const string ModeDrafts = "Черновики";
         private const string ModeCounteragents = "Контрагенты";
         private const string ModeIncoming = "Входящие";
@@ -151,6 +153,7 @@ namespace Pages
 
         private void OnSelectionChanged()
         {
+            _counteragents = null;
             RefreshCurrentViewAsync();
         }
 
@@ -205,8 +208,49 @@ namespace Pages
             if (cols["TotalVat"] != null) { cols["TotalVat"].Caption = "Сумма НДС"; cols["TotalVat"].VisibleIndex = 5; }
             if (cols["TotalAmount"] != null) { cols["TotalAmount"].Caption = "Сумма"; cols["TotalAmount"].VisibleIndex = 6; }
             if (cols["StatusText"] != null) { cols["StatusText"].Caption = "Статус"; cols["StatusText"].VisibleIndex = 7; }
-            if (cols["Supplier"] != null) { cols["Supplier"].Caption = "Поставщик"; cols["Supplier"].VisibleIndex = 8; }
+            if (cols["SupplierFound"] != null) { cols["SupplierFound"].Caption = "Поставщик"; cols["SupplierFound"].VisibleIndex = 8; }
+            if (cols["Supplier"] != null) cols["Supplier"].Visible = false;
             if (cols["IikoInvoice"] != null) { cols["IikoInvoice"].Caption = "Накладная ЭДО"; cols["IikoInvoice"].VisibleIndex = 9; }
+
+            _gridView.CustomDrawCell -= GridView_CustomDrawCell;
+            _gridView.CustomDrawCell += GridView_CustomDrawCell;
+        }
+
+        private void GridView_CustomDrawCell(object sender, RowCellCustomDrawEventArgs e)
+        {
+            var view = sender as GridView;
+            if (view == null) return;
+
+            if (e.Column.FieldName == "SupplierFound")
+            {
+                var val = view.GetRowCellValue(e.RowHandle, e.Column);
+                if (val is bool b && b)
+                    e.Appearance.BackColor = Color.LightGreen;
+            }
+            else if (e.Column.FieldName == "StatusText")
+            {
+                var val = view.GetRowCellValue(e.RowHandle, e.Column);
+                var text = val?.ToString() ?? "";
+                if (text == "Подписан")
+                    e.Appearance.BackColor = Color.LightGreen;
+                else if (text.Contains("Отказ") || text.Contains("Отклон"))
+                    e.Appearance.BackColor = Color.FromArgb(255, 200, 200);
+            }
+            else if (e.Column.FieldName == "IikoInvoice")
+            {
+                var val = view.GetRowCellValue(e.RowHandle, e.Column);
+                var text = val?.ToString() ?? "";
+                if (!string.IsNullOrEmpty(text))
+                    e.Appearance.BackColor = Color.LightGreen;
+            }
+        }
+
+        private async Task EnsureCounteragentsLoadedAsync(string boxId)
+        {
+            if (_counteragents != null) return;
+            _counteragents = await Task.Run(async () =>
+                await _client.GetCounteragentsAsync(boxId).ConfigureAwait(false)
+            ).ConfigureAwait(true) ?? new List<CounteragentRow>();
         }
 
         private async void RefreshIncomingDocumentsAsync()
@@ -222,7 +266,11 @@ namespace Pages
             var to = _dateTo.DateTime;
             try
             {
-                var list = await Task.Run(async () => await _client.GetDocumentsAsync(boxId, true, from, to).ConfigureAwait(false)).ConfigureAwait(true);
+                await EnsureCounteragentsLoadedAsync(boxId);
+                var ca = _counteragents;
+                var list = await Task.Run(async () =>
+                    await _client.GetDocumentsAsync(boxId, true, from, to, ca).ConfigureAwait(false)
+                ).ConfigureAwait(true);
                 _grid.DataSource = list ?? new List<DiadocDocumentRow>();
                 ApplyDocumentsColumns();
             }
@@ -245,9 +293,11 @@ namespace Pages
             {
                 if (_currentMode == ModeCounteragents)
                 {
-                    var list = await Task.Run(async () => await _client.GetCounteragentsAsync(boxId).ConfigureAwait(false)).ConfigureAwait(true);
-                    _grid.DataSource = list ?? new List<CounteragentRow>();
+                    _counteragents = await Task.Run(async () => await _client.GetCounteragentsAsync(boxId).ConfigureAwait(false)).ConfigureAwait(true)
+                        ?? new List<CounteragentRow>();
+                    _grid.DataSource = _counteragents;
                     _gridView.PopulateColumns();
+                    if (_gridView.Columns["BoxId"] != null) _gridView.Columns["BoxId"].Visible = false;
                     _gridView.Columns["Organization"].Visible = true;
                     _gridView.Columns["Organization"].Caption = "Организация";
                     _gridView.Columns["Inn"].Visible = true;
@@ -259,7 +309,11 @@ namespace Pages
                 {
                     var from = _dateFrom.DateTime;
                     var to = _dateTo.DateTime;
-                    var list = await Task.Run(async () => await _client.GetDocumentsAsync(boxId, true, from, to).ConfigureAwait(false)).ConfigureAwait(true);
+                    await EnsureCounteragentsLoadedAsync(boxId);
+                    var ca = _counteragents;
+                    var list = await Task.Run(async () =>
+                        await _client.GetDocumentsAsync(boxId, true, from, to, ca).ConfigureAwait(false)
+                    ).ConfigureAwait(true);
                     _grid.DataSource = list ?? new List<DiadocDocumentRow>();
                     ApplyDocumentsColumns();
                 }

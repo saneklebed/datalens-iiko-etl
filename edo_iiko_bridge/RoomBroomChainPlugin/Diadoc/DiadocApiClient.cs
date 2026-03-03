@@ -280,7 +280,7 @@ namespace RoomBroomChainPlugin.Diadoc
             return list;
         }
 
-        /// <summary>GET /V3/GetCounteragents?myBoxId=...</summary>
+        /// <summary>GET /V3/GetCounteragents?myBoxId=... (с пагинацией — загружает всех).</summary>
         public async Task<List<CounteragentRow>> GetCounteragentsAsync(string myBoxId)
         {
             if (string.IsNullOrWhiteSpace(myBoxId))
@@ -288,37 +288,58 @@ namespace RoomBroomChainPlugin.Diadoc
                     "Выберите юр. лицо с ящиком Диадока (у выбранной организации нет BoxId).");
 
             var cleanBoxId = StripBoxIdDomain(myBoxId.Trim());
-            var pq = new StringBuilder("V3/GetCounteragents");
-            pq.Append("?myBoxId=").Append(Uri.EscapeDataString(cleanBoxId));
-            pq.Append("&counteragentStatus=IsMyCounteragent");
-            pq.Append("&pageSize=100");
-
-            var json = await PerformRequestAsync("GET", pq.ToString(), AuthHeader())
-                .ConfigureAwait(false);
-
-            var root = JObject.Parse(json);
-            var arr = root["Counteragents"] as JArray;
             var list = new List<CounteragentRow>();
-            if (arr == null) return list;
+            string afterIndexKey = null;
 
-            foreach (var c in arr)
+            for (int page = 0; page < 50; page++)
             {
-                var org = c["Organization"];
-                if (org == null) continue;
-                var shortName = (string)org["ShortName"];
-                var fullName = (string)org["FullName"];
-                list.Add(new CounteragentRow
+                var pq = new StringBuilder("V3/GetCounteragents");
+                pq.Append("?myBoxId=").Append(Uri.EscapeDataString(cleanBoxId));
+                pq.Append("&counteragentStatus=IsMyCounteragent");
+                pq.Append("&pageSize=100");
+                if (!string.IsNullOrEmpty(afterIndexKey))
+                    pq.Append("&afterIndexKey=").Append(Uri.EscapeDataString(afterIndexKey));
+
+                var json = await PerformRequestAsync("GET", pq.ToString(), AuthHeader())
+                    .ConfigureAwait(false);
+
+                var root = JObject.Parse(json);
+                var arr = root["Counteragents"] as JArray;
+                if (arr == null || arr.Count == 0) break;
+
+                string lastKey = null;
+                foreach (var c in arr)
                 {
-                    Organization = ShortenOrganizationName(shortName, fullName),
-                    Inn = (string)org["Inn"] ?? "",
-                    Kpp = (string)org["Kpp"] ?? ""
-                });
+                    var org = c["Organization"];
+                    if (org == null) continue;
+                    var shortName = (string)org["ShortName"];
+                    var fullName = (string)org["FullName"];
+                    var boxes = org["Boxes"] as JArray;
+                    string cBoxId = null;
+                    if (boxes != null && boxes.Count > 0)
+                        cBoxId = (string)(boxes[0]["BoxId"] ?? boxes[0]["boxId"]);
+                    list.Add(new CounteragentRow
+                    {
+                        Organization = ShortenOrganizationName(shortName, fullName),
+                        Inn = (string)org["Inn"] ?? "",
+                        Kpp = (string)org["Kpp"] ?? "",
+                        BoxId = cBoxId ?? ""
+                    });
+                    lastKey = (string)c["IndexKey"];
+                }
+
+                if (arr.Count < 100 || string.IsNullOrEmpty(lastKey))
+                    break;
+                afterIndexKey = lastKey;
             }
             return list;
         }
 
         /// <summary>GET /V3/GetDocuments (входящие или черновики). fromDate/toDate в формате ДД.ММ.ГГГГ.</summary>
-        public async Task<List<DiadocDocumentRow>> GetDocumentsAsync(string boxId, bool incoming, DateTime? fromDate = null, DateTime? toDate = null)
+        public async Task<List<DiadocDocumentRow>> GetDocumentsAsync(
+            string boxId, bool incoming,
+            DateTime? fromDate = null, DateTime? toDate = null,
+            List<CounteragentRow> counteragents = null)
         {
             if (string.IsNullOrWhiteSpace(boxId))
                 throw new InvalidOperationException(
@@ -339,6 +360,20 @@ namespace RoomBroomChainPlugin.Diadoc
             var json = await PerformRequestAsync("GET", pq.ToString(), AuthHeader())
                 .ConfigureAwait(false);
 
+            var boxToName = new Dictionary<string, CounteragentRow>(StringComparer.OrdinalIgnoreCase);
+            var innToName = new Dictionary<string, CounteragentRow>(StringComparer.OrdinalIgnoreCase);
+            if (counteragents != null)
+            {
+                foreach (var ca in counteragents)
+                {
+                    var key = StripBoxIdDomain(ca.BoxId ?? "");
+                    if (!string.IsNullOrEmpty(key) && !boxToName.ContainsKey(key))
+                        boxToName[key] = ca;
+                    if (!string.IsNullOrEmpty(ca.Inn) && !innToName.ContainsKey(ca.Inn))
+                        innToName[ca.Inn] = ca;
+                }
+            }
+
             var root = JObject.Parse(json);
             var arr = root["Documents"] as JArray;
             var list = new List<DiadocDocumentRow>();
@@ -347,7 +382,7 @@ namespace RoomBroomChainPlugin.Diadoc
             foreach (var d in arr)
             {
                 var meta = d["Metadata"] as JArray;
-                string totalSum = null, totalVat = null;
+                string totalSum = null, totalVat = null, sellerInn = null;
                 if (meta != null)
                 {
                     foreach (var m in meta)
@@ -356,18 +391,52 @@ namespace RoomBroomChainPlugin.Diadoc
                         var v = (string)m["Value"];
                         if (k == "TotalSum") totalSum = v;
                         else if (k == "TotalVat") totalVat = v;
+                        else if (k == "SellerInn") sellerInn = v;
                     }
                 }
+
                 var statusText = (string)(d["DocflowStatus"]?["PrimaryStatus"]?["StatusText"]);
-                var sender = (string)(d["CounterpartyName"] ?? d["SenderName"]);
+
+                var counteragentBoxId = StripBoxIdDomain((string)d["CounteragentBoxId"] ?? "");
+                string senderName = null;
+                string counterpartyInn = sellerInn;
+
+                CounteragentRow matched = null;
+                if (!string.IsNullOrEmpty(counteragentBoxId))
+                    boxToName.TryGetValue(counteragentBoxId, out matched);
+                if (matched == null && !string.IsNullOrEmpty(sellerInn))
+                    innToName.TryGetValue(sellerInn, out matched);
+
+                if (matched != null)
+                {
+                    senderName = matched.Organization;
+                    if (string.IsNullOrEmpty(counterpartyInn))
+                        counterpartyInn = matched.Inn;
+                }
+                if (string.IsNullOrEmpty(senderName))
+                    senderName = (string)d["Title"] ?? "";
+
+                var creationTs = (string)d["CreationTimestamp"];
+                string sentToEdo = "";
+                if (!string.IsNullOrEmpty(creationTs))
+                {
+                    if (DateTime.TryParse(creationTs, null,
+                        System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+                        sentToEdo = dt.ToLocalTime().ToString("dd.MM.yyyy");
+                    else
+                        sentToEdo = creationTs;
+                }
+
                 list.Add(new DiadocDocumentRow
                 {
                     MessageId = (string)d["MessageId"],
                     EntityId = (string)d["EntityId"],
                     DocumentNumber = (string)d["DocumentNumber"],
                     DocumentDate = (string)d["DocumentDate"],
-                    CounterpartyName = sender,
-                    Supplier = sender,
+                    CounterpartyName = senderName,
+                    CounterpartyInn = counterpartyInn ?? "",
+                    SentToEdo = sentToEdo,
+                    Supplier = senderName,
                     TotalAmount = totalSum,
                     TotalVat = totalVat,
                     StatusText = statusText
@@ -391,6 +460,7 @@ namespace RoomBroomChainPlugin.Diadoc
         public string Organization { get; set; }
         public string Inn { get; set; }
         public string Kpp { get; set; }
+        public string BoxId { get; set; }
     }
 
     public class DiadocDocumentRow
@@ -408,6 +478,8 @@ namespace RoomBroomChainPlugin.Diadoc
         public string CounterpartyInn { get; set; }
         /// <summary>Отправлен в ЗДО — дата доставки, при необходимости можно заполнять из API.</summary>
         public string SentToEdo { get; set; }
+        /// <summary>Найден ли поставщик с таким ИНН в iiko.</summary>
+        public bool SupplierFound { get; set; }
         /// <summary>Поставщик (для входящих = отправитель).</summary>
         public string Supplier { get; set; }
         /// <summary>Накладная IIKO — при интеграции с iiko.</summary>
