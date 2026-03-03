@@ -4,6 +4,8 @@ using System.Drawing;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Xml.Linq;
+using System.Globalization;
 using DevExpress.Utils;
 using DevExpress.XtraEditors;
 using DevExpress.XtraEditors.Controls;
@@ -45,6 +47,7 @@ namespace Pages
         private List<DiadocOrg> _orgs = new List<DiadocOrg>();
         private List<CounteragentRow> _counteragents;
         private List<IikoSupplier> _suppliers;
+        private List<IikoStore> _stores;
         private const string ModeDrafts = "Черновики";
         private const string ModeCounteragents = "Контрагенты";
         private const string ModeIncoming = "Входящие";
@@ -191,6 +194,14 @@ namespace Pages
             _btnUploadOnly = new SimpleButton { Text = "Выгрузить в iiko", Width = 150 };
             _btnReject = new SimpleButton { Text = "Отказать", Width = 100 };
 
+            _btnUploadOnly.Click += async (s, e) => await UploadToIikoAsync(false);
+            _btnSignAndUpload.Click += async (s, e) => await UploadToIikoAsync(true);
+            _btnReject.Click += (s, e) =>
+            {
+                XtraMessageBox.Show("Отказ в подписи будет реализован в следующей версии.", "ЭДО ↔ iiko",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            };
+
             var lblStore = new LabelControl { Text = "Склад iiko:", AutoSizeMode = LabelAutoSizeMode.None, Width = 70 };
             _storeCombo = new ComboBoxEdit { Width = 220 };
 
@@ -251,6 +262,7 @@ namespace Pages
         {
             _counteragents = null;
             _suppliers = null;
+            _stores = null;
             RefreshCurrentViewAsync();
         }
 
@@ -343,6 +355,9 @@ namespace Pages
             }
         }
 
+        private DiadocDocumentRow _currentDocument;
+        private UtdItemRow[] _currentItems;
+
         private async void GridView_DoubleClick(object sender, EventArgs e)
         {
             if (_currentMode != ModeIncoming)
@@ -370,7 +385,10 @@ namespace Pages
                     $"Поставщик: {row.CounterpartyName} (ИНН {row.CounterpartyInn}){Environment.NewLine}" +
                     $"Документ: {row.DocumentNumber} от {row.DocumentDate}";
 
-                _detailsGrid.DataSource = items ?? Array.Empty<UtdItemRow>();
+                _currentDocument = row;
+                _currentItems = items ?? Array.Empty<UtdItemRow>();
+
+                _detailsGrid.DataSource = _currentItems;
                 _detailsView.PopulateColumns();
 
                 if (_detailsView.Columns["Product"] != null) _detailsView.Columns["Product"].Visible = false;
@@ -380,13 +398,17 @@ namespace Pages
 
                 int col = 0;
                 if (_detailsView.Columns["LineIndex"] != null) { _detailsView.Columns["LineIndex"].Caption = "№"; _detailsView.Columns["LineIndex"].VisibleIndex = col++; }
-                if (_detailsView.Columns["UnitName"] != null) { _detailsView.Columns["UnitName"].Caption = "Ед."; _detailsView.Columns["UnitName"].VisibleIndex = col++; }
+                if (_detailsView.Columns["ItemVendorCode"] != null) { _detailsView.Columns["ItemVendorCode"].Caption = "Код поставщика"; _detailsView.Columns["ItemVendorCode"].VisibleIndex = col++; }
+                if (_detailsView.Columns["SupplierProductName"] != null) { _detailsView.Columns["SupplierProductName"].Caption = "Наименование у поставщика"; _detailsView.Columns["SupplierProductName"].VisibleIndex = col++; }
+                if (_detailsView.Columns["UnitName"] != null) { _detailsView.Columns["UnitName"].Caption = "Тара"; _detailsView.Columns["UnitName"].VisibleIndex = col++; }
                 if (_detailsView.Columns["Quantity"] != null) { _detailsView.Columns["Quantity"].Caption = "Кол-во"; _detailsView.Columns["Quantity"].VisibleIndex = col++; }
                 if (_detailsView.Columns["Price"] != null) { _detailsView.Columns["Price"].Caption = "Цена"; _detailsView.Columns["Price"].VisibleIndex = col++; }
                 if (_detailsView.Columns["Subtotal"] != null) { _detailsView.Columns["Subtotal"].Caption = "Сумма"; _detailsView.Columns["Subtotal"].VisibleIndex = col++; }
                 if (_detailsView.Columns["Vat"] != null) { _detailsView.Columns["Vat"].Caption = "Сумма НДС"; _detailsView.Columns["Vat"].VisibleIndex = col++; }
-                if (_detailsView.Columns["ItemVendorCode"] != null) { _detailsView.Columns["ItemVendorCode"].Caption = "Код поставщика"; _detailsView.Columns["ItemVendorCode"].VisibleIndex = col++; }
                 if (_detailsView.Columns["ItemArticle"] != null) { _detailsView.Columns["ItemArticle"].Caption = "Артикул"; _detailsView.Columns["ItemArticle"].VisibleIndex = col++; }
+
+                await EnsureStoresLoadedAsync().ConfigureAwait(true);
+                PopulateStoresCombo();
 
                 SetMode(ModeIncomingDetails);
             }
@@ -423,6 +445,42 @@ namespace Pages
             }
         }
 
+        private async Task EnsureStoresLoadedAsync()
+        {
+            if (_stores != null || _iikoClient == null)
+                return;
+
+            try
+            {
+                _stores = await Task.Run(async () =>
+                    await _iikoClient.GetStoresAsync().ConfigureAwait(false)
+                ).ConfigureAwait(true) ?? new List<IikoStore>();
+            }
+            catch
+            {
+                _stores = new List<IikoStore>();
+            }
+        }
+
+        private void PopulateStoresCombo()
+        {
+            _storeCombo.Properties.Items.Clear();
+            if (_stores == null || _stores.Count == 0)
+            {
+                _storeCombo.Properties.Items.Add("— нет данных по складам iiko —");
+                _storeCombo.SelectedIndex = 0;
+                return;
+            }
+
+            foreach (var s in _stores)
+            {
+                var name = string.IsNullOrWhiteSpace(s.Name) ? s.Id : s.Name;
+                _storeCombo.Properties.Items.Add(name);
+            }
+            if (_stores.Count > 0)
+                _storeCombo.SelectedIndex = 0;
+        }
+
         private async Task MarkSuppliersAsync(List<DiadocDocumentRow> docs)
         {
             if (docs == null || docs.Count == 0)
@@ -452,6 +510,7 @@ namespace Pages
                 if (innToSupplier.TryGetValue(inn.Trim(), out var sup))
                 {
                     d.SupplierFound = true;
+                    d.IikoSupplierId = sup.Id;
                     if (string.IsNullOrWhiteSpace(d.Supplier))
                         d.Supplier = sup.Name ?? "";
                     matched++;
@@ -459,6 +518,198 @@ namespace Pages
             }
 
             IikoLog.Write("MarkSuppliersAsync: matched=" + matched);
+        }
+
+        private static string NormalizeDateForIikoDocument(string date)
+        {
+            // Для dateIncoming/dueDate iiko на практике ожидает формат dd.MM.yyyy.
+            if (string.IsNullOrWhiteSpace(date))
+                return "";
+            if (DateTime.TryParse(date, out var dt))
+                return dt.ToString("dd.MM.yyyy");
+            return date;
+        }
+
+        /// <param name="supplierCodeToNativeProductGuid">Маппинг «код/артикул поставщика» → guid нашего товара в iiko (из прайс-листа поставщика).</param>
+        private string BuildIncomingInvoiceXml(DiadocDocumentRow doc, UtdItemRow[] items, string supplierId, string storeId,
+            Dictionary<string, string> supplierCodeToNativeProductGuid = null)
+        {
+            var xDoc = new XDocument();
+            var root = new XElement("document");
+            xDoc.Add(root);
+
+            var itemsEl = new XElement("items");
+            root.Add(itemsEl);
+
+            foreach (var it in items ?? Array.Empty<UtdItemRow>())
+            {
+                var itemEl = new XElement("item");
+                itemsEl.Add(itemEl);
+
+                itemEl.Add(new XElement("amount", it.Quantity.ToString(CultureInfo.InvariantCulture)));
+
+                string nativeProductGuid = null;
+                if (supplierCodeToNativeProductGuid != null)
+                {
+                    var code = (it.ItemVendorCode ?? "").Trim();
+                    if (!string.IsNullOrEmpty(code) && supplierCodeToNativeProductGuid.TryGetValue(code, out var guid))
+                        nativeProductGuid = guid;
+                    if (string.IsNullOrEmpty(nativeProductGuid))
+                    {
+                        code = (it.ItemArticle ?? "").Trim();
+                        if (!string.IsNullOrEmpty(code) && supplierCodeToNativeProductGuid.TryGetValue(code, out var g))
+                            nativeProductGuid = g;
+                    }
+                }
+                if (!string.IsNullOrWhiteSpace(nativeProductGuid))
+                    itemEl.Add(new XElement("product", nativeProductGuid));
+                if (!string.IsNullOrWhiteSpace(it.ItemArticle))
+                    itemEl.Add(new XElement("productArticle", it.ItemArticle));
+                if (!string.IsNullOrWhiteSpace(it.ItemVendorCode))
+                    itemEl.Add(new XElement("supplierProductArticle", it.ItemVendorCode));
+
+                itemEl.Add(new XElement("num", it.LineIndex));
+
+                if (!string.IsNullOrWhiteSpace(storeId))
+                    itemEl.Add(new XElement("store", storeId));
+
+                itemEl.Add(new XElement("price", it.Price.ToString(CultureInfo.InvariantCulture)));
+                itemEl.Add(new XElement("sum", it.Subtotal.ToString(CultureInfo.InvariantCulture)));
+                itemEl.Add(new XElement("actualAmount", it.Quantity.ToString(CultureInfo.InvariantCulture)));
+            }
+
+            var dateIncoming = NormalizeDateForIikoDocument(doc.DocumentDate);
+
+            if (!string.IsNullOrWhiteSpace(doc.DocumentNumber))
+                root.Add(new XElement("documentNumber", doc.DocumentNumber));
+            if (!string.IsNullOrWhiteSpace(dateIncoming))
+                root.Add(new XElement("dateIncoming", dateIncoming));
+            if (!string.IsNullOrWhiteSpace(doc.DocumentNumber))
+                root.Add(new XElement("invoice", doc.DocumentNumber));
+            if (!string.IsNullOrWhiteSpace(storeId))
+                root.Add(new XElement("defaultStore", storeId));
+            if (!string.IsNullOrWhiteSpace(supplierId))
+                root.Add(new XElement("supplier", supplierId));
+            // incomingDate оставляем пустым, чтобы iiko подставил его из dateIncoming.
+            root.Add(new XElement("useDefaultDocumentTime", "true"));
+
+            return xDoc.ToString(SaveOptions.DisableFormatting);
+        }
+
+        private async Task UploadToIikoAsync(bool withSign)
+        {
+            if (_currentMode != ModeIncomingDetails || _client == null || _iikoClient == null)
+                return;
+
+            if (_currentDocument == null || _currentItems == null || _currentItems.Length == 0)
+            {
+                XtraMessageBox.Show("Нет выбранной накладной или её строк.", "Выгрузка в iiko",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_currentDocument.IikoSupplierId))
+            {
+                XtraMessageBox.Show("Не найден поставщик в iiko по ИНН. Проверьте сопоставление поставщиков.",
+                    "Выгрузка в iiko", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            string storeId = null;
+            if (_stores != null && _stores.Count > 0 &&
+                _storeCombo.SelectedIndex >= 0 && _storeCombo.SelectedIndex < _stores.Count)
+            {
+                storeId = _stores[_storeCombo.SelectedIndex].Id;
+            }
+            else
+            {
+                // Фолбэк: позволяем ввести GUID склада вручную.
+                storeId = _storeCombo.Text?.Trim();
+            }
+
+            if (string.IsNullOrWhiteSpace(storeId))
+            {
+                XtraMessageBox.Show(
+                    "Не выбран склад iiko. Заполните прайс-лист поставщика в iiko и обновите список складов/подразделений, затем выберите склад в выпадающем списке или введите GUID склада вручную.",
+                    "Выгрузка в iiko",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            try
+            {
+                var supplierPricelistKey = _currentDocument.IikoSupplierId;
+                if (!string.IsNullOrWhiteSpace(supplierPricelistKey))
+                {
+                    var sup = _suppliers?.FirstOrDefault(s => s.Id == _currentDocument.IikoSupplierId);
+                    if (sup != null && !string.IsNullOrWhiteSpace(sup.Code))
+                        supplierPricelistKey = sup.Code;
+                }
+                IikoRestoClient.WriteImportDebugLog("storeId=" + (storeId ?? "<null>") + " supplierId=" + (_currentDocument.IikoSupplierId ?? "<null>"));
+
+                var pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierPricelistKey).ConfigureAwait(true);
+                var supplierCodeToNativeGuid = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                if (pricelist != null)
+                {
+                    foreach (var row in pricelist)
+                    {
+                        if (!string.IsNullOrWhiteSpace(row.NativeProduct))
+                        {
+                            if (!string.IsNullOrWhiteSpace(row.SupplierProductNum))
+                                supplierCodeToNativeGuid[row.SupplierProductNum.Trim()] = row.NativeProduct;
+                            if (!string.IsNullOrWhiteSpace(row.SupplierProductCode))
+                                supplierCodeToNativeGuid[row.SupplierProductCode.Trim()] = row.NativeProduct;
+                        }
+                    }
+                }
+
+                var xml = BuildIncomingInvoiceXml(_currentDocument, _currentItems, _currentDocument.IikoSupplierId, storeId, supplierCodeToNativeGuid);
+                var result = await _iikoClient.ImportIncomingInvoiceAsync(xml).ConfigureAwait(true);
+
+                var valid = result.Valid == true;
+                var msg = valid
+                    ? $"Накладная в iiko успешно создана (№ {result.DocumentNumber ?? _currentDocument.DocumentNumber})."
+                    : "Ответ iiko получен, но документ не прошёл валидацию. Проверьте детали в журнале.";
+
+                if (!string.IsNullOrEmpty(result.RawXml))
+                    IikoLog.Write("ImportIncomingInvoiceAsync result: " + result.RawXml.Replace(Environment.NewLine, " "));
+
+                if (valid)
+                {
+                    _currentDocument.IikoInvoice = result.DocumentNumber ?? _currentDocument.DocumentNumber;
+                    RefreshCurrentViewAsync();
+                }
+
+                XtraMessageBox.Show(msg, "Выгрузка в iiko", MessageBoxButtons.OK,
+                    valid ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+
+                if (withSign && valid)
+                {
+                    XtraMessageBox.Show("Подпись и квитанция Диадока будут реализованы в следующей версии.",
+                        "Подписать и выгрузить", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+            catch (IikoImportException ie)
+            {
+                string msg;
+                if (ie.StatusCode == 409 && !string.IsNullOrEmpty(ie.ResponseBody) &&
+                    ie.ResponseBody.IndexOf("Product is not found", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    msg = "Товар из накладной не найден в номенклатуре iiko.\r\n" +
+                          "Добавьте товар в iiko с нужным артикулом или сопоставьте «Код поставщика» из УПД с артикулом существующего товара.\r\n\r\n" +
+                          "Ответ iiko: " + ie.ResponseBody;
+                }
+                else
+                {
+                    msg = "Ошибка iiko (HTTP " + ie.StatusCode + "):\r\n" + (ie.ResponseBody ?? ie.Message);
+                }
+                XtraMessageBox.Show(msg, "Выгрузка в iiko", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            catch (Exception ex)
+            {
+                XtraMessageBox.Show(ex.Message, "Выгрузка в iiko", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private async void RefreshIncomingDocumentsAsync()

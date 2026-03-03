@@ -19,6 +19,9 @@ namespace RoomBroomChainPlugin.Diadoc
         private const string BaseUrl = "https://diadoc-api.kontur.ru";
         private readonly RoomBroomConfig _config;
         private string _token;
+        // Временный лог для диагностики парсинга УПД на dev-машине.
+        private const string DebugLogPath =
+            @"C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\dist\diadoc_debug.log";
 
         public DiadocApiClient(RoomBroomConfig config)
         {
@@ -208,6 +211,26 @@ namespace RoomBroomChainPlugin.Diadoc
                 }
                 return new InvalidOperationException(
                     $"[{(int)httpResp.StatusCode} {pathAndQuery}] {message}", we);
+            }
+        }
+
+        #endregion
+
+        #region Helpers / logging
+
+        private static void SafeDebugLog(string message)
+        {
+            try
+            {
+                var line = DateTime.Now.ToString("s") + " " + (message ?? "");
+                var dir = Path.GetDirectoryName(DebugLogPath);
+                if (!string.IsNullOrEmpty(dir))
+                    Directory.CreateDirectory(dir);
+                File.AppendAllText(DebugLogPath, line + Environment.NewLine, Encoding.UTF8);
+            }
+            catch
+            {
+                // Лог не должен ломать работу плагина.
             }
         }
 
@@ -480,9 +503,25 @@ namespace RoomBroomChainPlugin.Diadoc
             {
                 using (var response = (HttpWebResponse)await request.GetResponseAsync().ConfigureAwait(false))
                 using (var stream = response.GetResponseStream())
-                using (var reader = new StreamReader(stream ?? Stream.Null, Encoding.UTF8))
                 {
-                    xml = await reader.ReadToEndAsync().ConfigureAwait(false);
+                    // Читаем как байты, чтобы корректно обработать windows-1251 и прочие кодировки.
+                    using (var ms = new MemoryStream())
+                    {
+                        if (stream != null)
+                            await stream.CopyToAsync(ms).ConfigureAwait(false);
+                        var bytes = ms.ToArray();
+                        // По умолчанию пробуем UTF-8.
+                        xml = Encoding.UTF8.GetString(bytes);
+                        // Если в заголовке XML указана windows-1251 — перекодируем.
+                        var marker1 = "encoding=\"windows-1251\"";
+                        var marker2 = "encoding='windows-1251'";
+                        if ((xml != null && xml.IndexOf(marker1, StringComparison.OrdinalIgnoreCase) >= 0) ||
+                            (xml != null && xml.IndexOf(marker2, StringComparison.OrdinalIgnoreCase) >= 0))
+                        {
+                            var enc1251 = Encoding.GetEncoding(1251);
+                            xml = enc1251.GetString(bytes);
+                        }
+                    }
                 }
             }
             catch (WebException we)
@@ -493,54 +532,160 @@ namespace RoomBroomChainPlugin.Diadoc
             if (string.IsNullOrWhiteSpace(xml))
                 return Array.Empty<UtdItemRow>();
 
+            SafeDebugLog("GetUtdItemsAsync: start");
+
             try
             {
+                // Сохраняем последнюю полученную XML-накладную для диагностики.
+                try
+                {
+                    var tmpDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                    if (string.IsNullOrEmpty(tmpDir)) tmpDir = Path.GetTempPath();
+                    var folder = Path.Combine(tmpDir, "RoomBroomChainPlugin");
+                    Directory.CreateDirectory(folder);
+                    var file = Path.Combine(folder, "utd_last.xml");
+                    File.WriteAllText(file, xml ?? "", Encoding.UTF8);
+                    SafeDebugLog("GetUtdItemsAsync: saved utd_last.xml to " + file);
+                }
+                catch { }
+
                 var list = new List<UtdItemRow>();
                 var doc = System.Xml.Linq.XDocument.Parse(xml);
                 var root = doc.Root;
                 if (root == null)
-                    return Array.Empty<UtdItemRow>();
-
-                // УПД может быть в разных договорах и пространствах имён, но структура Table/Item одинакова.
-                var ns = root.Name.Namespace;
-                var table = root.Element(ns + "Table");
-                if (table == null)
-                    return Array.Empty<UtdItemRow>();
-
-                int index = 1;
-                foreach (var item in table.Elements(ns + "Item"))
                 {
-                    decimal GetDecimalAttr(string name)
-                    {
-                        var a = (string)item.Attribute(name);
-                        if (decimal.TryParse(a, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
-                            return v;
-                        return 0m;
-                    }
-
-                    var row = new UtdItemRow
-                    {
-                        LineIndex = index++,
-                        Product = (string)item.Attribute("Product") ?? "",
-                        Unit = (string)item.Attribute("Unit") ?? "",
-                        UnitName = (string)item.Attribute("UnitName") ?? "",
-                        Quantity = GetDecimalAttr("Quantity"),
-                        Price = GetDecimalAttr("Price"),
-                        Subtotal = GetDecimalAttr("Subtotal"),
-                        Vat = GetDecimalAttr("Vat"),
-                        ItemVendorCode = (string)item.Attribute("ItemVendorCode") ?? "",
-                        ItemArticle = (string)item.Attribute("ItemArticle") ?? "",
-                        Gtin = (string)item.Attribute("Gtin") ?? "",
-                        ItemAdditionalInfo = (string)item.Attribute("ItemAdditionalInfo") ?? ""
-                    };
-
-                    list.Add(row);
+                    SafeDebugLog("GetUtdItemsAsync: root is null");
+                    return Array.Empty<UtdItemRow>();
                 }
 
+                // Вариант 1: UniversalTransferDocument (Table/Item)
+                System.Xml.Linq.XElement table = null;
+                foreach (var el in root.Descendants())
+                {
+                    var local = el.Name.LocalName;
+                    if (local == "Table" || local == "InvoiceTable")
+                    {
+                        table = el;
+                        break;
+                    }
+                }
+
+                int index = 1;
+
+                if (table != null)
+                {
+                    SafeDebugLog("GetUtdItemsAsync: using UTD Table/Item format");
+
+                    foreach (var item in table.Elements())
+                    {
+                        if (item.Name.LocalName != "Item")
+                            continue;
+
+                        decimal GetDecimalAttr(string name)
+                        {
+                            var a = (string)item.Attribute(name);
+                            if (decimal.TryParse(a, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
+                                return v;
+                            return 0m;
+                        }
+
+                        var prodName = (string)item.Attribute("Product") ?? "";
+                        var row = new UtdItemRow
+                        {
+                            LineIndex = index++,
+                            Product = prodName,
+                            SupplierProductName = prodName,
+                            Unit = (string)item.Attribute("Unit") ?? "",
+                            UnitName = (string)item.Attribute("UnitName") ?? "",
+                            Quantity = GetDecimalAttr("Quantity"),
+                            Price = GetDecimalAttr("Price"),
+                            Subtotal = GetDecimalAttr("Subtotal"),
+                            Vat = GetDecimalAttr("Vat"),
+                            ItemVendorCode = (string)item.Attribute("ItemVendorCode") ?? "",
+                            ItemArticle = (string)item.Attribute("ItemArticle") ?? "",
+                            Gtin = (string)item.Attribute("Gtin") ?? "",
+                            ItemAdditionalInfo = (string)item.Attribute("ItemAdditionalInfo") ?? ""
+                        };
+
+                        list.Add(row);
+                    }
+                }
+                else
+                {
+                    // Вариант 2: ФНС 5.02/5.03 (Файл/Документ/ТаблСчФакт/СведТов)
+                    System.Xml.Linq.XElement table2 = null;
+                    foreach (var el in root.Descendants())
+                    {
+                        if (el.Name.LocalName == "ТаблСчФакт")
+                        {
+                            table2 = el;
+                            break;
+                        }
+                    }
+
+                    if (table2 == null)
+                    {
+                        SafeDebugLog("GetUtdItemsAsync: ТаблСчФакт не найден");
+                        return Array.Empty<UtdItemRow>();
+                    }
+
+                    SafeDebugLog("GetUtdItemsAsync: using ФНС ТаблСчФакт/СведТов format");
+
+                    foreach (var item in table2.Elements())
+                    {
+                        if (item.Name.LocalName != "СведТов")
+                            continue;
+
+                        decimal GetDecimalAttrFromAttr(string name)
+                        {
+                            var a = (string)item.Attribute(name);
+                            if (decimal.TryParse(a, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
+                                return v;
+                            return 0m;
+                        }
+
+                        decimal GetDecimalFromChild(string name)
+                        {
+                            var child = item.Element(item.GetDefaultNamespace() + name) ??
+                                        item.Element(name);
+                            var text = (string)child ?? "";
+                            if (decimal.TryParse(text, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
+                                return v;
+                            return 0m;
+                        }
+
+                        var dop = item.Element(item.GetDefaultNamespace() + "ДопСведТов") ??
+                                  item.Element("ДопСведТов");
+
+                        var nameAttr = (string)item.Attribute("НаимТов") ?? "";
+
+                        var row = new UtdItemRow
+                        {
+                            LineIndex = index++,
+                            Product = nameAttr,
+                            SupplierProductName = nameAttr,
+                            Unit = (string)item.Attribute("ОКЕИ_Тов") ?? "",
+                            UnitName = (string)item.Attribute("НаимЕдИзм") ?? "",
+                            Quantity = GetDecimalAttrFromAttr("КолТов"),
+                            Price = GetDecimalAttrFromAttr("ЦенаТов"),
+                            Subtotal = GetDecimalAttrFromAttr("СтТовУчНал"),
+                            Vat = GetDecimalFromChild("СумНал"),
+                            ItemVendorCode = (string)(dop?.Attribute("КодТов")) ?? "",
+                            ItemArticle = (string)(dop?.Attribute("КодТов")) ?? "",
+                            Gtin = "",
+                            ItemAdditionalInfo = ""
+                        };
+
+                        list.Add(row);
+                    }
+                }
+
+                SafeDebugLog("GetUtdItemsAsync: parsed rows count=" + list.Count);
                 return list.ToArray();
             }
-            catch
+            catch (Exception ex)
             {
+                SafeDebugLog("GetUtdItemsAsync: exception " + ex.GetType().Name + " " + ex.Message);
                 // В случае неизвестного формата просто вернуть пустой список, чтобы не ломать UI.
                 return Array.Empty<UtdItemRow>();
             }
@@ -585,5 +730,7 @@ namespace RoomBroomChainPlugin.Diadoc
         public string Supplier { get; set; }
         /// <summary>Накладная IIKO — при интеграции с iiko.</summary>
         public string IikoInvoice { get; set; }
+        /// <summary>Идентификатор поставщика в iiko (если найден по ИНН).</summary>
+        public string IikoSupplierId { get; set; }
     }
 }

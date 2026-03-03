@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import xml.etree.ElementTree as ET
+
 import requests
 
 from edo_iiko_bridge.config import IikoRestoConfig
@@ -71,6 +73,49 @@ class IikoRestoClient:
                         return _normalize_products(data[key])
             break
         return []
+
+    def import_incoming_invoice(self, xml_body: str) -> dict[str, Any]:
+        """Импорт приходной накладной (incomingInvoice) в iiko.
+
+        Отправляет XML, совместимый с XSD incomingInvoiceDto, в эндпоинт
+        POST /resto/api/documents/import/incomingInvoice?key=...
+        и возвращает результат валидации как словарь
+        {"documentNumber": str | None, "valid": bool | None, "warning": bool | None, "raw": str}.
+        """
+        base = self._config.base_url.rstrip("/")
+        url = f"{base}/resto/api/documents/import/incomingInvoice"
+        params = {"key": self._get_key()}
+        resp = self._session.post(
+            url,
+            params=params,
+            data=xml_body.encode("utf-8"),
+            headers={"Content-Type": "application/xml; charset=utf-8"},
+            verify=self._config.verify_ssl,
+            timeout=60,
+        )
+        resp.raise_for_status()
+        text = resp.text.strip()
+        result: dict[str, Any] = {"raw": text or ""}
+        if not text or not text.lstrip().startswith("<"):
+            return result
+
+        try:
+            root = ET.fromstring(text)
+        except ET.ParseError:
+            return result
+
+        if root.tag.endswith("documentValidationResult"):
+            doc_number = root.findtext("documentNumber") or root.findtext("DocumentNumber")
+            valid_text = root.findtext("valid") or root.findtext("Valid")
+            warning_text = root.findtext("warning") or root.findtext("Warning")
+            result.update(
+                {
+                    "documentNumber": doc_number,
+                    "valid": (valid_text.lower() == "true") if isinstance(valid_text, str) else None,
+                    "warning": (warning_text.lower() == "true") if isinstance(warning_text, str) else None,
+                }
+            )
+        return result
 
 
 def _normalize_products(raw: list[dict[str, Any]]) -> list[dict[str, Any]]:

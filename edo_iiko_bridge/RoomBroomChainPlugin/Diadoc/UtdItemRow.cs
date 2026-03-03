@@ -9,6 +9,8 @@ namespace RoomBroomChainPlugin.Diadoc
     {
         public int LineIndex { get; set; }
         public string Product { get; set; }
+        /// <summary>Наименование товара у поставщика (удобно выводить отдельной колонкой).</summary>
+        public string SupplierProductName { get; set; }
         public string Unit { get; set; }
         public string UnitName { get; set; }
         public decimal Quantity { get; set; }

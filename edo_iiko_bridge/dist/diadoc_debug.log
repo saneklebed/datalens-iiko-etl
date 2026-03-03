@@ -1,0 +1,23 @@
+﻿2026-03-03T18:29:27 GetUtdItemsAsync: start
+2026-03-03T18:29:27 GetUtdItemsAsync: saved utd_last.xml to C:\Users\Orange\AppData\Local\RoomBroomChainPlugin\utd_last.xml
+2026-03-03T18:29:27 GetUtdItemsAsync: exception XmlException Знак "�", шестнадцатеричное значение 0xFFFD, не может стоять в начале имени., строка 2, позиция 2.
+2026-03-03T18:32:37 GetUtdItemsAsync: start
+2026-03-03T18:32:37 GetUtdItemsAsync: saved utd_last.xml to C:\Users\Orange\AppData\Local\RoomBroomChainPlugin\utd_last.xml
+2026-03-03T18:32:37 GetUtdItemsAsync: using ФНС ТаблСчФакт/СведТов format
+2026-03-03T18:32:37 GetUtdItemsAsync: parsed rows count=5
+2026-03-03T18:37:22 GetUtdItemsAsync: start
+2026-03-03T18:37:22 GetUtdItemsAsync: saved utd_last.xml to C:\Users\Orange\AppData\Local\RoomBroomChainPlugin\utd_last.xml
+2026-03-03T18:37:22 GetUtdItemsAsync: using ФНС ТаблСчФакт/СведТов format
+2026-03-03T18:37:22 GetUtdItemsAsync: parsed rows count=5
+2026-03-03T18:39:24 GetUtdItemsAsync: start
+2026-03-03T18:39:24 GetUtdItemsAsync: saved utd_last.xml to C:\Users\Orange\AppData\Local\RoomBroomChainPlugin\utd_last.xml
+2026-03-03T18:39:24 GetUtdItemsAsync: using ФНС ТаблСчФакт/СведТов format
+2026-03-03T18:39:24 GetUtdItemsAsync: parsed rows count=5
+2026-03-03T18:45:52 GetUtdItemsAsync: start
+2026-03-03T18:45:52 GetUtdItemsAsync: saved utd_last.xml to C:\Users\Orange\AppData\Local\RoomBroomChainPlugin\utd_last.xml
+2026-03-03T18:45:52 GetUtdItemsAsync: using ФНС ТаблСчФакт/СведТов format
+2026-03-03T18:45:52 GetUtdItemsAsync: parsed rows count=5
+2026-03-03T18:52:32 GetUtdItemsAsync: start
+2026-03-03T18:52:32 GetUtdItemsAsync: saved utd_last.xml to C:\Users\Orange\AppData\Local\RoomBroomChainPlugin\utd_last.xml
+2026-03-03T18:52:32 GetUtdItemsAsync: using ФНС ТаблСчФакт/СведТов format
+2026-03-03T18:52:32 GetUtdItemsAsync: parsed rows count=5

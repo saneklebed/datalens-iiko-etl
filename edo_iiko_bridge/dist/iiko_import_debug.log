@@ -1,0 +1,12 @@
+﻿2026-03-03T18:37:23 POST https://oreks-co.iiko.it:443/resto/api/documents/import/incomingInvoice?key=7d285eb2-752e-a86c-e209-b7a6c861fa64 bodyLength=1369
+2026-03-03T18:37:23 HTTP POST error code=400 url=https://oreks-co.iiko.it:443/resto/api/documents/import/incomingInvoice?key=7d285eb2-752e-a86c-e209-b7a6c861fa64 msg=Удаленный сервер возвратил ошибку: (400) Недопустимый запрос. responseBody=java.lang.IllegalArgumentException: Error while parsing date '2026-03-03'
+Suppressed: java.text.ParseException: Unparseable date: "2026-03-03" does not match (\p{Nd}++)\Q.\E(\p{Nd}++)\Q.\E(\p{Nd}++)
+Suppressed: java.time.format.DateTimeParseException: Text '2026-03-03' could not be parsed at index 10
+
+2026-03-03T18:39:26 POST https://oreks-co.iiko.it:443/resto/api/documents/import/incomingInvoice?key=3d2e376d-0b26-ab8a-0807-0bdb5219664d bodyLength=1330
+2026-03-03T18:39:26 HTTP POST error code=409 url=https://oreks-co.iiko.it:443/resto/api/documents/import/incomingInvoice?key=3d2e376d-0b26-ab8a-0807-0bdb5219664d msg=Удаленный сервер возвратил ошибку: (409) Конфликт. responseBody=Product is not found neither by id=null nor by article=24788
+2026-03-03T18:45:55 POST https://oreks-co.iiko.it:443/resto/api/documents/import/incomingInvoice?key=76a8eec4-3532-27e4-bc72-e341381adffa bodyLength=1875
+2026-03-03T18:45:55 HTTP POST error code=500 url=https://oreks-co.iiko.it:443/resto/api/documents/import/incomingInvoice?key=76a8eec4-3532-27e4-bc72-e341381adffa msg=Удаленный сервер возвратил ошибку: (500) Внутренняя ошибка сервера. responseBody=java.lang.NullPointerException: Document department is not unique: []
+
+2026-03-03T18:52:37 storeId=8a22283d-5c13-4172-8f10-2c499fcce4c8 supplierId=da52bbfb-f9a0-4ddd-8b40-05879770e9e0
+2026-03-03T18:52:37 POST https://oreks-co.iiko.it:443/resto/api/documents/import/incomingInvoice?key=49c67195-ac32-0621-66f0-b6b93daacca5 bodyLength=1911
