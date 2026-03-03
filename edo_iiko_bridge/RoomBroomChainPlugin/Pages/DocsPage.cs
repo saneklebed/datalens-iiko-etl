@@ -13,6 +13,7 @@ using DevExpress.XtraGrid.Views.Grid;
 using DevExpress.XtraGrid;
 using RoomBroomChainPlugin.Config;
 using RoomBroomChainPlugin.Diadoc;
+using RoomBroomChainPlugin.Iiko;
 
 namespace Pages
 {
@@ -29,8 +30,10 @@ namespace Pages
         private GridControl _grid;
         private GridView _gridView;
         private DiadocApiClient _client;
+        private IikoRestoClient _iikoClient;
         private List<DiadocOrg> _orgs = new List<DiadocOrg>();
         private List<CounteragentRow> _counteragents;
+        private List<IikoSupplier> _suppliers;
         private const string ModeDrafts = "Черновики";
         private const string ModeCounteragents = "Контрагенты";
         private const string ModeIncoming = "Входящие";
@@ -154,6 +157,7 @@ namespace Pages
         private void OnSelectionChanged()
         {
             _counteragents = null;
+            _suppliers = null;
             RefreshCurrentViewAsync();
         }
 
@@ -177,6 +181,7 @@ namespace Pages
             try
             {
                 _client = new DiadocApiClient(cfg);
+                _iikoClient = new IikoRestoClient();
                 var list = await Task.Run(async () => await _client.GetMyOrganizationsAsync().ConfigureAwait(false)).ConfigureAwait(true);
                 _orgs = list ?? new List<DiadocOrg>();
                 _legalEntityCombo.Properties.Items.Clear();
@@ -253,6 +258,63 @@ namespace Pages
             ).ConfigureAwait(true) ?? new List<CounteragentRow>();
         }
 
+        private async Task EnsureSuppliersLoadedAsync()
+        {
+            if (_suppliers != null || _iikoClient == null)
+                return;
+
+            try
+            {
+                _suppliers = await Task.Run(async () =>
+                    await _iikoClient.GetSuppliersAsync().ConfigureAwait(false)
+                ).ConfigureAwait(true) ?? new List<IikoSupplier>();
+            }
+            catch
+            {
+                // Если по какой-то причине не удалось получить поставщиков (нет ключа, нет доступа и т.п.),
+                // просто работаем без отметки «Поставщик», без всплывающих ошибок.
+                _suppliers = new List<IikoSupplier>();
+            }
+        }
+
+        private async Task MarkSuppliersAsync(List<DiadocDocumentRow> docs)
+        {
+            if (docs == null || docs.Count == 0)
+                return;
+
+            await EnsureSuppliersLoadedAsync().ConfigureAwait(true);
+            if (_suppliers == null || _suppliers.Count == 0)
+            {
+                IikoLog.Write("MarkSuppliersAsync: no suppliers loaded");
+                return;
+            }
+
+            IikoLog.Write("MarkSuppliersAsync: docs=" + docs.Count + " suppliers=" + _suppliers.Count);
+
+            var innToSupplier = _suppliers
+                .Where(s => !string.IsNullOrWhiteSpace(s.Inn))
+                .GroupBy(s => s.Inn.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+            int matched = 0;
+            foreach (var d in docs)
+            {
+                var inn = d.CounterpartyInn;
+                if (string.IsNullOrWhiteSpace(inn))
+                    continue;
+
+                if (innToSupplier.TryGetValue(inn.Trim(), out var sup))
+                {
+                    d.SupplierFound = true;
+                    if (string.IsNullOrWhiteSpace(d.Supplier))
+                        d.Supplier = sup.Name ?? "";
+                    matched++;
+                }
+            }
+
+            IikoLog.Write("MarkSuppliersAsync: matched=" + matched);
+        }
+
         private async void RefreshIncomingDocumentsAsync()
         {
             if (_client == null) return;
@@ -270,8 +332,9 @@ namespace Pages
                 var ca = _counteragents;
                 var list = await Task.Run(async () =>
                     await _client.GetDocumentsAsync(boxId, true, from, to, ca).ConfigureAwait(false)
-                ).ConfigureAwait(true);
-                _grid.DataSource = list ?? new List<DiadocDocumentRow>();
+                ).ConfigureAwait(true) ?? new List<DiadocDocumentRow>();
+                await MarkSuppliersAsync(list).ConfigureAwait(true);
+                _grid.DataSource = list;
                 ApplyDocumentsColumns();
             }
             catch (Exception ex)
@@ -313,14 +376,18 @@ namespace Pages
                     var ca = _counteragents;
                     var list = await Task.Run(async () =>
                         await _client.GetDocumentsAsync(boxId, true, from, to, ca).ConfigureAwait(false)
-                    ).ConfigureAwait(true);
-                    _grid.DataSource = list ?? new List<DiadocDocumentRow>();
+                    ).ConfigureAwait(true) ?? new List<DiadocDocumentRow>();
+                    await MarkSuppliersAsync(list).ConfigureAwait(true);
+                    _grid.DataSource = list;
                     ApplyDocumentsColumns();
                 }
                 else if (_currentMode == ModeDrafts)
                 {
-                    var list = await Task.Run(async () => await _client.GetDocumentsAsync(boxId, false).ConfigureAwait(false)).ConfigureAwait(true);
-                    _grid.DataSource = list ?? new List<DiadocDocumentRow>();
+                    var list = await Task.Run(async () =>
+                        await _client.GetDocumentsAsync(boxId, false).ConfigureAwait(false)
+                    ).ConfigureAwait(true) ?? new List<DiadocDocumentRow>();
+                    await MarkSuppliersAsync(list).ConfigureAwait(true);
+                    _grid.DataSource = list;
                     ApplyDocumentsColumns();
                 }
             }

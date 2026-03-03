@@ -54,13 +54,13 @@ Copy-Item $dll (Join-Path $stage "RoomBroomChainPlugin.dll") -Force
 $jsonDll = Join-Path $projDir "bin\$Configuration\Newtonsoft.Json.dll"
 if (Test-Path $jsonDll) { Copy-Item $jsonDll (Join-Path $stage "Newtonsoft.Json.dll") -Force }
 
-# (опционально) папка под логи/конфиги, если позже понадобится
-$logsDir = Join-Path $stage "RoomBroom"
-New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
-Set-Content -Path (Join-Path $logsDir "readme.txt") -Encoding UTF8 -Value @"
-Эта папка зарезервирована под логи/настройки плагина RoomBroom.
-Плагин в дальнейшем может писать сюда данные, аналогично EDI-Doc:
-  AppDomain.CurrentDomain.BaseDirectory + 'Plugins\RoomBroom\'
+# Шаблон конфига доступа к iiko Server (без реальных значений) — рядом с DLL.
+Set-Content -Path (Join-Path $stage "RoomBroom.iiko.config.json") -Encoding UTF8 -Value @"
+{
+  ""baseUrl"": """",
+  ""login"": """",
+  ""passwordSha1"": """"
+}
 "@
 
 $zip = Join-Path $OutDir "RoomBroomChainPlugin.zip"
