@@ -29,6 +29,17 @@ namespace Pages
         private SimpleButton _btnFetchInvoices;
         private GridControl _grid;
         private GridView _gridView;
+
+        private PanelControl _detailsPanel;
+        private LabelControl _detailsHeader;
+        private SimpleButton _btnBack;
+        private SimpleButton _btnSignAndUpload;
+        private SimpleButton _btnUploadOnly;
+        private SimpleButton _btnReject;
+        private ComboBoxEdit _storeCombo;
+        private GridControl _detailsGrid;
+        private GridView _detailsView;
+
         private DiadocApiClient _client;
         private IikoRestoClient _iikoClient;
         private List<DiadocOrg> _orgs = new List<DiadocOrg>();
@@ -37,6 +48,7 @@ namespace Pages
         private const string ModeDrafts = "Черновики";
         private const string ModeCounteragents = "Контрагенты";
         private const string ModeIncoming = "Входящие";
+        private const string ModeIncomingDetails = "Входящие_Детали";
 
         public DocsPage()
         {
@@ -129,7 +141,83 @@ namespace Pages
             _gridView.Columns.AddField("Kpp").Caption = "КПП";
             _gridView.OptionsBehavior.Editable = false;
             _gridView.OptionsView.ShowGroupPanel = false;
+            _gridView.DoubleClick += GridView_DoubleClick;
 
+            // Панель деталей входящей накладной (второй «экран» внутри документов).
+            _detailsPanel = new PanelControl
+            {
+                Dock = DockStyle.Fill,
+                Visible = false,
+                Padding = new Padding(8)
+            };
+
+            var detailsTop = new PanelControl
+            {
+                Dock = DockStyle.Top,
+                Height = 70,
+                Padding = new Padding(4)
+            };
+
+            _btnBack = new SimpleButton
+            {
+                Text = "< Назад к входящим",
+                Width = 160,
+                Dock = DockStyle.Left
+            };
+            _btnBack.Click += (s, e) =>
+            {
+                SetMode(ModeIncoming);
+                RefreshIncomingDocumentsAsync();
+            };
+
+            _detailsHeader = new LabelControl
+            {
+                Dock = DockStyle.Fill,
+                AutoSizeMode = LabelAutoSizeMode.Vertical,
+                Appearance = { Font = new Font("Segoe UI", 9, FontStyle.Regular) }
+            };
+
+            detailsTop.Controls.Add(_detailsHeader);
+            detailsTop.Controls.Add(_btnBack);
+
+            var actionsPanel = new PanelControl
+            {
+                Dock = DockStyle.Top,
+                Height = 60,
+                Padding = new Padding(4)
+            };
+
+            _btnSignAndUpload = new SimpleButton { Text = "Подписать и выгрузить в iiko", Width = 190 };
+            _btnUploadOnly = new SimpleButton { Text = "Выгрузить в iiko", Width = 150 };
+            _btnReject = new SimpleButton { Text = "Отказать", Width = 100 };
+
+            var lblStore = new LabelControl { Text = "Склад iiko:", AutoSizeMode = LabelAutoSizeMode.None, Width = 70 };
+            _storeCombo = new ComboBoxEdit { Width = 220 };
+
+            var flowActions = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false
+            };
+            flowActions.Controls.Add(_btnSignAndUpload);
+            flowActions.Controls.Add(_btnUploadOnly);
+            flowActions.Controls.Add(_btnReject);
+            flowActions.Controls.Add(lblStore);
+            flowActions.Controls.Add(_storeCombo);
+            actionsPanel.Controls.Add(flowActions);
+
+            _detailsGrid = new GridControl { Dock = DockStyle.Fill };
+            _detailsView = new GridView(_detailsGrid);
+            _detailsGrid.MainView = _detailsView;
+            _detailsView.OptionsBehavior.Editable = false;
+            _detailsView.OptionsView.ShowGroupPanel = false;
+
+            _detailsPanel.Controls.Add(_detailsGrid);
+            _detailsPanel.Controls.Add(actionsPanel);
+            _detailsPanel.Controls.Add(detailsTop);
+
+            Controls.Add(_detailsPanel);
             Controls.Add(_grid);
             Controls.Add(_filterPanel);
             Controls.Add(buttonsPanel);
@@ -145,13 +233,18 @@ namespace Pages
         {
             _currentMode = mode;
             _filterPanel.Visible = (mode == ModeIncoming);
+            _detailsPanel.Visible = (mode == ModeIncomingDetails);
+            _grid.Visible = (mode != ModeIncomingDetails);
+
             if (mode == ModeIncoming)
             {
                 _grid.DataSource = new List<DiadocDocumentRow>();
                 ApplyDocumentsColumns();
             }
-            else
+            else if (mode != ModeIncomingDetails)
+            {
                 RefreshCurrentViewAsync();
+            }
         }
 
         private void OnSelectionChanged()
@@ -247,6 +340,59 @@ namespace Pages
                 var text = val?.ToString() ?? "";
                 if (!string.IsNullOrEmpty(text))
                     e.Appearance.BackColor = Color.LightGreen;
+            }
+        }
+
+        private async void GridView_DoubleClick(object sender, EventArgs e)
+        {
+            if (_currentMode != ModeIncoming)
+                return;
+
+            var view = sender as GridView;
+            if (view == null) return;
+            var hit = view.CalcHitInfo(view.GridControl.PointToClient(Control.MousePosition));
+            if (!hit.InRow || hit.RowHandle < 0)
+                return;
+
+            var row = view.GetRow(hit.RowHandle) as DiadocDocumentRow;
+            if (row == null)
+                return;
+
+            var boxId = GetSelectedBoxId();
+            if (string.IsNullOrEmpty(boxId) || string.IsNullOrEmpty(row.MessageId) || string.IsNullOrEmpty(row.EntityId))
+                return;
+
+            try
+            {
+                var items = await _client.GetUtdItemsAsync(boxId, row.MessageId, row.EntityId).ConfigureAwait(true);
+
+                _detailsHeader.Text =
+                    $"Поставщик: {row.CounterpartyName} (ИНН {row.CounterpartyInn}){Environment.NewLine}" +
+                    $"Документ: {row.DocumentNumber} от {row.DocumentDate}";
+
+                _detailsGrid.DataSource = items ?? Array.Empty<UtdItemRow>();
+                _detailsView.PopulateColumns();
+
+                if (_detailsView.Columns["Product"] != null) _detailsView.Columns["Product"].Visible = false;
+                if (_detailsView.Columns["Gtin"] != null) _detailsView.Columns["Gtin"].Visible = false;
+                if (_detailsView.Columns["ItemAdditionalInfo"] != null) _detailsView.Columns["ItemAdditionalInfo"].Visible = false;
+                if (_detailsView.Columns["Unit"] != null) _detailsView.Columns["Unit"].Visible = false;
+
+                int col = 0;
+                if (_detailsView.Columns["LineIndex"] != null) { _detailsView.Columns["LineIndex"].Caption = "№"; _detailsView.Columns["LineIndex"].VisibleIndex = col++; }
+                if (_detailsView.Columns["UnitName"] != null) { _detailsView.Columns["UnitName"].Caption = "Ед."; _detailsView.Columns["UnitName"].VisibleIndex = col++; }
+                if (_detailsView.Columns["Quantity"] != null) { _detailsView.Columns["Quantity"].Caption = "Кол-во"; _detailsView.Columns["Quantity"].VisibleIndex = col++; }
+                if (_detailsView.Columns["Price"] != null) { _detailsView.Columns["Price"].Caption = "Цена"; _detailsView.Columns["Price"].VisibleIndex = col++; }
+                if (_detailsView.Columns["Subtotal"] != null) { _detailsView.Columns["Subtotal"].Caption = "Сумма"; _detailsView.Columns["Subtotal"].VisibleIndex = col++; }
+                if (_detailsView.Columns["Vat"] != null) { _detailsView.Columns["Vat"].Caption = "Сумма НДС"; _detailsView.Columns["Vat"].VisibleIndex = col++; }
+                if (_detailsView.Columns["ItemVendorCode"] != null) { _detailsView.Columns["ItemVendorCode"].Caption = "Код поставщика"; _detailsView.Columns["ItemVendorCode"].VisibleIndex = col++; }
+                if (_detailsView.Columns["ItemArticle"] != null) { _detailsView.Columns["ItemArticle"].Caption = "Артикул"; _detailsView.Columns["ItemArticle"].VisibleIndex = col++; }
+
+                SetMode(ModeIncomingDetails);
+            }
+            catch (Exception ex)
+            {
+                XtraMessageBox.Show(ex.Message, "Детали накладной", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 

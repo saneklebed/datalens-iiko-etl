@@ -445,6 +445,107 @@ namespace RoomBroomChainPlugin.Diadoc
             return list;
         }
 
+        /// <summary>
+        /// GET /V4/GetEntityContent → XML UniversalTransferDocument; парсит табличную часть (InvoiceTable/Item).
+        /// </summary>
+        public async Task<UtdItemRow[]> GetUtdItemsAsync(string boxId, string messageId, string entityId)
+        {
+            if (string.IsNullOrWhiteSpace(boxId))
+                throw new ArgumentException("boxId");
+            if (string.IsNullOrWhiteSpace(messageId))
+                throw new ArgumentException("messageId");
+            if (string.IsNullOrWhiteSpace(entityId))
+                throw new ArgumentException("entityId");
+
+            var cleanBoxId = StripBoxIdDomain(boxId.Trim());
+            var pq = new StringBuilder("V4/GetEntityContent");
+            pq.Append("?boxId=").Append(Uri.EscapeDataString(cleanBoxId));
+            pq.Append("&messageId=").Append(Uri.EscapeDataString(messageId));
+            pq.Append("&entityId=").Append(Uri.EscapeDataString(entityId));
+
+            var url = BuildUrl(pq.ToString());
+            LogRequest("GET", url);
+
+            var request = (HttpWebRequest)WebRequest.Create(url);
+            request.Method = "GET";
+            request.AllowAutoRedirect = true;
+            request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
+            request.Timeout = 60000;
+            var authHeaderValue = AuthHeader();
+            if (!string.IsNullOrEmpty(authHeaderValue))
+                request.Headers.Add("Authorization", authHeaderValue);
+
+            string xml;
+            try
+            {
+                using (var response = (HttpWebResponse)await request.GetResponseAsync().ConfigureAwait(false))
+                using (var stream = response.GetResponseStream())
+                using (var reader = new StreamReader(stream ?? Stream.Null, Encoding.UTF8))
+                {
+                    xml = await reader.ReadToEndAsync().ConfigureAwait(false);
+                }
+            }
+            catch (WebException we)
+            {
+                throw WrapWebException(we, pq.ToString());
+            }
+
+            if (string.IsNullOrWhiteSpace(xml))
+                return Array.Empty<UtdItemRow>();
+
+            try
+            {
+                var list = new List<UtdItemRow>();
+                var doc = System.Xml.Linq.XDocument.Parse(xml);
+                var root = doc.Root;
+                if (root == null)
+                    return Array.Empty<UtdItemRow>();
+
+                // УПД может быть в разных договорах и пространствах имён, но структура Table/Item одинакова.
+                var ns = root.Name.Namespace;
+                var table = root.Element(ns + "Table");
+                if (table == null)
+                    return Array.Empty<UtdItemRow>();
+
+                int index = 1;
+                foreach (var item in table.Elements(ns + "Item"))
+                {
+                    decimal GetDecimalAttr(string name)
+                    {
+                        var a = (string)item.Attribute(name);
+                        if (decimal.TryParse(a, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
+                            return v;
+                        return 0m;
+                    }
+
+                    var row = new UtdItemRow
+                    {
+                        LineIndex = index++,
+                        Product = (string)item.Attribute("Product") ?? "",
+                        Unit = (string)item.Attribute("Unit") ?? "",
+                        UnitName = (string)item.Attribute("UnitName") ?? "",
+                        Quantity = GetDecimalAttr("Quantity"),
+                        Price = GetDecimalAttr("Price"),
+                        Subtotal = GetDecimalAttr("Subtotal"),
+                        Vat = GetDecimalAttr("Vat"),
+                        ItemVendorCode = (string)item.Attribute("ItemVendorCode") ?? "",
+                        ItemArticle = (string)item.Attribute("ItemArticle") ?? "",
+                        Gtin = (string)item.Attribute("Gtin") ?? "",
+                        ItemAdditionalInfo = (string)item.Attribute("ItemAdditionalInfo") ?? ""
+                    };
+
+                    list.Add(row);
+                }
+
+                return list.ToArray();
+            }
+            catch
+            {
+                // В случае неизвестного формата просто вернуть пустой список, чтобы не ломать UI.
+                return Array.Empty<UtdItemRow>();
+            }
+        }
+
         #endregion
     }
 
