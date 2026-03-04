@@ -9,7 +9,7 @@ namespace RoomBroomChainPlugin.Diadoc
     {
         public int LineIndex { get; set; }
         public string Product { get; set; }
-        /// <summary>Наименование товара у поставщика (удобно выводить отдельной колонкой).</summary>
+        /// <summary>Наименование товара у поставщика (отдельная колонка в гриде).</summary>
         public string SupplierProductName { get; set; }
         public string Unit { get; set; }
         public string UnitName { get; set; }
@@ -21,8 +21,6 @@ namespace RoomBroomChainPlugin.Diadoc
         public string ItemArticle { get; set; }
         public string Gtin { get; set; }
         public string ItemAdditionalInfo { get; set; }
-        /// <summary>Наименование товара в нашей системе (iiko) — заполняется из прайс-листа поставщика при открытии документа.</summary>
-        public string IikoProductName { get; set; }
     }
 }
 

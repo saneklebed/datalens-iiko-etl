@@ -320,7 +320,9 @@ namespace Pages
             if (cols["StatusText"] != null) { cols["StatusText"].Caption = "Статус"; cols["StatusText"].VisibleIndex = 7; }
             if (cols["SupplierFound"] != null) { cols["SupplierFound"].Caption = "Поставщик"; cols["SupplierFound"].VisibleIndex = 8; }
             if (cols["Supplier"] != null) cols["Supplier"].Visible = false;
-            if (cols["IikoInvoice"] != null) { cols["IikoInvoice"].Caption = "Накладная ЭДО"; cols["IikoInvoice"].VisibleIndex = 9; }
+            // Номер накладной iiko (если загружена). Показываем одной колонкой, зелёный фон при наличии номера.
+            if (cols["IikoInvoice"] != null) { cols["IikoInvoice"].Caption = "Накладная iiko"; cols["IikoInvoice"].VisibleIndex = 9; }
+            if (cols["IikoSupplierId"] != null) cols["IikoSupplierId"].Visible = false;
 
             _gridView.CustomDrawCell -= GridView_CustomDrawCell;
             _gridView.CustomDrawCell += GridView_CustomDrawCell;
@@ -463,48 +465,6 @@ namespace Pages
             }
         }
 
-        /// <summary>Заполняет IikoProductName у строк накладной из прайс-листа поставщика (наименование товара в iiko).</summary>
-        private async Task FillIikoProductNamesAsync()
-        {
-            if (_currentItems == null || _currentItems.Length == 0 || _currentDocument == null || _iikoClient == null)
-                return;
-            if (string.IsNullOrWhiteSpace(_currentDocument.IikoSupplierId))
-                return;
-
-            var supplierPricelistKey = _currentDocument.IikoSupplierId;
-            var sup = _suppliers?.FirstOrDefault(s => s.Id == _currentDocument.IikoSupplierId);
-            if (sup != null && !string.IsNullOrWhiteSpace(sup.Code))
-                supplierPricelistKey = sup.Code;
-
-            var pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierPricelistKey).ConfigureAwait(true);
-            if (pricelist == null || pricelist.Count == 0)
-                return;
-
-            var codeToName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var row in pricelist)
-            {
-                if (string.IsNullOrWhiteSpace(row.NativeProductName))
-                    continue;
-                if (!string.IsNullOrWhiteSpace(row.SupplierProductNum))
-                    codeToName[row.SupplierProductNum.Trim()] = row.NativeProductName;
-                if (!string.IsNullOrWhiteSpace(row.SupplierProductCode))
-                    codeToName[row.SupplierProductCode.Trim()] = row.NativeProductName;
-            }
-
-            foreach (var it in _currentItems)
-            {
-                var code = (it.ItemVendorCode ?? "").Trim();
-                if (!string.IsNullOrEmpty(code) && codeToName.TryGetValue(code, out var name))
-                {
-                    it.IikoProductName = name;
-                    continue;
-                }
-                code = (it.ItemArticle ?? "").Trim();
-                if (!string.IsNullOrEmpty(code) && codeToName.TryGetValue(code, out var name2))
-                    it.IikoProductName = name2;
-            }
-        }
-
         private void PopulateStoresCombo()
         {
             _storeCombo.Properties.Items.Clear();
@@ -626,12 +586,13 @@ namespace Pages
 
             var dateIncoming = NormalizeDateForIikoDocument(doc.DocumentDate);
 
-            if (!string.IsNullOrWhiteSpace(doc.DocumentNumber))
-                root.Add(new XElement("documentNumber", doc.DocumentNumber));
             if (!string.IsNullOrWhiteSpace(dateIncoming))
                 root.Add(new XElement("dateIncoming", dateIncoming));
             if (!string.IsNullOrWhiteSpace(doc.DocumentNumber))
-                root.Add(new XElement("invoice", doc.DocumentNumber));
+                root.Add(new XElement("incomingDocumentNumber", doc.DocumentNumber));
+            // Если в настройках включено «создавать с проведением» — сразу помечаем документ как PROCESSED.
+            if (createWithPosting)
+                root.Add(new XElement("status", "PROCESSED"));
             if (!string.IsNullOrWhiteSpace(storeId))
                 root.Add(new XElement("defaultStore", storeId));
             if (!string.IsNullOrWhiteSpace(supplierId))
@@ -712,27 +673,14 @@ namespace Pages
 
                 var cfg = ConfigStore.Load();
                 var createWithPosting = cfg != null && cfg.CreateInvoiceWithPosting;
-                var xml = BuildIncomingInvoiceXml(_currentDocument, _currentItems, _currentDocument.IikoSupplierId, storeId, supplierCodeToNativeGuid, createWithPosting: false);
+                var xml = BuildIncomingInvoiceXml(_currentDocument, _currentItems, _currentDocument.IikoSupplierId, storeId, supplierCodeToNativeGuid, createWithPosting);
                 var result = await _iikoClient.ImportIncomingInvoiceAsync(xml).ConfigureAwait(true);
-
-                if (result.Valid == true && createWithPosting)
-                {
-                    try
-                    {
-                        var processResult = await _iikoClient.ProcessIncomingInvoiceAsync(xml).ConfigureAwait(true);
-                        if (processResult.Valid != true)
-                            IikoLog.Write("ProcessIncomingInvoiceAsync: valid=" + processResult.Valid + " raw=" + (processResult.RawXml ?? "").Replace(Environment.NewLine, " "));
-                    }
-                    catch (Exception ex)
-                    {
-                        IikoLog.Write("ProcessIncomingInvoiceAsync error: " + ex.Message);
-                        XtraMessageBox.Show("Накладная создана, но не проведена: " + ex.Message, "Выгрузка в iiko", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    }
-                }
 
                 var valid = result.Valid == true;
                 var msg = valid
-                    ? $"Накладная в iiko успешно создана (№ {result.DocumentNumber ?? _currentDocument.DocumentNumber})." + (createWithPosting ? " Документ проведён." : "")
+                    ? (createWithPosting
+                        ? $"Накладная № {result.DocumentNumber ?? _currentDocument.DocumentNumber} успешно сохранена с проведением."
+                        : $"Накладная № {result.DocumentNumber ?? _currentDocument.DocumentNumber} успешно сохранена без проведения.")
                     : "Ответ iiko получен, но документ не прошёл валидацию. Проверьте детали в журнале.";
 
                 if (!string.IsNullOrEmpty(result.RawXml))

@@ -559,19 +559,6 @@ namespace RoomBroomChainPlugin.Iiko
         }
 
         /// <summary>
-        /// Проведение приходной накладной: POST /resto/api/documents/process/incomingInvoice.
-        /// Тело — структура document (incomingInvoiceDto), как при импорте. Аналог распроведения (unprocess).
-        /// </summary>
-        public async Task<DocumentValidationResult> ProcessIncomingInvoiceAsync(string xmlBody)
-        {
-            if (string.IsNullOrWhiteSpace(xmlBody))
-                throw new ArgumentException("xmlBody");
-
-            var raw = await PostXmlAsync("api/documents/process/incomingInvoice", xmlBody, debug: true).ConfigureAwait(false);
-            return ParseDocumentValidationResult(raw);
-        }
-
-        /// <summary>
         /// Импорт приходной накладной: POST /resto/api/documents/import/incomingInvoice.
         /// </summary>
         public async Task<DocumentValidationResult> ImportIncomingInvoiceAsync(string xmlBody)

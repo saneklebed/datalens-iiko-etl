@@ -16,3 +16,21 @@ Suppressed: java.time.format.DateTimeParseException: Text '2026-03-03' could not
 2026-03-03T19:18:34 POST https://oreks-co.iiko.it:443/resto/api/documents/import/incomingInvoice?key=0c9589e2-8392-e7b6-ed52-2c9703b5df05 bodyLength=1938
 2026-03-03T19:23:34 storeId=79d6636d-7fe0-4a1b-adbc-bf3def4ca91e supplierId=da52bbfb-f9a0-4ddd-8b40-05879770e9e0
 2026-03-03T19:23:35 POST https://oreks-co.iiko.it:443/resto/api/documents/import/incomingInvoice?key=28483c28-2016-9821-2fc8-df92eae914ce bodyLength=1938
+2026-03-04T12:08:12 storeId=79d6636d-7fe0-4a1b-adbc-bf3def4ca91e supplierId=da52bbfb-f9a0-4ddd-8b40-05879770e9e0
+2026-03-04T12:08:13 POST https://oreks-co.iiko.it:443/resto/api/documents/import/incomingInvoice?key=2585b618-f2e8-828f-4e6c-507916dd171c bodyLength=642
+2026-03-04T12:08:13 POST https://oreks-co.iiko.it:443/resto/api/documents/process/incomingInvoice?key=2585b618-f2e8-828f-4e6c-507916dd171c bodyLength=642
+2026-03-04T12:08:13 HTTP POST error code=404 url=https://oreks-co.iiko.it:443/resto/api/documents/process/incomingInvoice?key=2585b618-f2e8-828f-4e6c-507916dd171c msg=Удаленный сервер возвратил ошибку: (404) Не найден. responseBody=HTTP 404 Not Found /resto/api/documents/process/incomingInvoice
+2026-03-04T12:29:09 storeId=79d6636d-7fe0-4a1b-adbc-bf3def4ca91e supplierId=da52bbfb-f9a0-4ddd-8b40-05879770e9e0
+2026-03-04T12:29:10 POST https://oreks-co.iiko.it:443/resto/api/documents/import/incomingInvoice?key=ef467334-0957-5ebf-69ba-ddc235dfdb2b bodyLength=598
+2026-03-04T12:29:10 POST https://oreks-co.iiko.it:443/resto/api/documents/process/incomingInvoice?key=ef467334-0957-5ebf-69ba-ddc235dfdb2b bodyLength=598
+2026-03-04T12:29:10 HTTP POST error code=404 url=https://oreks-co.iiko.it:443/resto/api/documents/process/incomingInvoice?key=ef467334-0957-5ebf-69ba-ddc235dfdb2b msg=Удаленный сервер возвратил ошибку: (404) Не найден. responseBody=HTTP 404 Not Found /resto/api/documents/process/incomingInvoice
+2026-03-04T12:32:15 storeId=79d6636d-7fe0-4a1b-adbc-bf3def4ca91e supplierId=da52bbfb-f9a0-4ddd-8b40-05879770e9e0
+2026-03-04T12:32:16 POST https://oreks-co.iiko.it:443/resto/api/documents/import/incomingInvoice?key=6499575e-be3f-95bd-4006-3fe0073d35a7 bodyLength=628
+2026-03-04T12:32:16 POST https://oreks-co.iiko.it:443/resto/api/documents/process/incomingInvoice?key=6499575e-be3f-95bd-4006-3fe0073d35a7 bodyLength=628
+2026-03-04T12:32:16 HTTP POST error code=404 url=https://oreks-co.iiko.it:443/resto/api/documents/process/incomingInvoice?key=6499575e-be3f-95bd-4006-3fe0073d35a7 msg=Удаленный сервер возвратил ошибку: (404) Не найден. responseBody=HTTP 404 Not Found /resto/api/documents/process/incomingInvoice
+2026-03-04T12:40:15 storeId=79d6636d-7fe0-4a1b-adbc-bf3def4ca91e supplierId=da52bbfb-f9a0-4ddd-8b40-05879770e9e0
+2026-03-04T12:40:15 POST https://oreks-co.iiko.it:443/resto/api/documents/import/incomingInvoice?key=293c851b-b356-b135-27c6-1bd518867db3 bodyLength=654
+2026-03-04T12:41:05 storeId=79d6636d-7fe0-4a1b-adbc-bf3def4ca91e supplierId=da52bbfb-f9a0-4ddd-8b40-05879770e9e0
+2026-03-04T12:41:06 POST https://oreks-co.iiko.it:443/resto/api/documents/import/incomingInvoice?key=293c851b-b356-b135-27c6-1bd518867db3 bodyLength=654
+2026-03-04T12:42:45 storeId=79d6636d-7fe0-4a1b-adbc-bf3def4ca91e supplierId=da52bbfb-f9a0-4ddd-8b40-05879770e9e0
+2026-03-04T12:42:45 POST https://oreks-co.iiko.it:443/resto/api/documents/import/incomingInvoice?key=293c851b-b356-b135-27c6-1bd518867db3 bodyLength=1897
