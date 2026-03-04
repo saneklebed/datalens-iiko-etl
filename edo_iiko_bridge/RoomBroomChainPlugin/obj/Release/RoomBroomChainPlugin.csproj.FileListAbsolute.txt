@@ -10,3 +10,15 @@ C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChai
 C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Release\RoomBroomChainPlugin.pdb
 C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\bin\Release\Newtonsoft.Json.dll
 C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Release\RoomBroo.5800E919.Up2Date
+C:\Users\sanek\Desktop\prog\datalens-iiko-etl-master\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\bin\Release\RoomBroomChainPlugin.dll
+C:\Users\sanek\Desktop\prog\datalens-iiko-etl-master\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\bin\Release\RoomBroomChainPlugin.pdb
+C:\Users\sanek\Desktop\prog\datalens-iiko-etl-master\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\bin\Release\Newtonsoft.Json.dll
+C:\Users\sanek\Desktop\prog\datalens-iiko-etl-master\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Release\RoomBroomChainPlugin.csproj.AssemblyReference.cache
+C:\Users\sanek\Desktop\prog\datalens-iiko-etl-master\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Release\RoomBroomChainPlugin.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\sanek\Desktop\prog\datalens-iiko-etl-master\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Release\RoomBroomChainPlugin.AssemblyInfoInputs.cache
+C:\Users\sanek\Desktop\prog\datalens-iiko-etl-master\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Release\RoomBroomChainPlugin.AssemblyInfo.cs
+C:\Users\sanek\Desktop\prog\datalens-iiko-etl-master\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Release\RoomBroomChainPlugin.csproj.CoreCompileInputs.cache
+C:\Users\sanek\Desktop\prog\datalens-iiko-etl-master\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Release\RoomBroomChainPlugin.sourcelink.json
+C:\Users\sanek\Desktop\prog\datalens-iiko-etl-master\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Release\RoomBroo.5800E919.Up2Date
+C:\Users\sanek\Desktop\prog\datalens-iiko-etl-master\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Release\RoomBroomChainPlugin.dll
+C:\Users\sanek\Desktop\prog\datalens-iiko-etl-master\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Release\RoomBroomChainPlugin.pdb

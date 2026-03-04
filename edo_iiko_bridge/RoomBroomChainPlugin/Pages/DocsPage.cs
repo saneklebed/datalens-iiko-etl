@@ -22,6 +22,8 @@ namespace Pages
     public class DocsPage : XtraUserControl
     {
         private ComboBoxEdit _legalEntityCombo;
+        private PanelControl _buttonsPanel;
+        private PanelControl _backPanel;
         private SimpleButton _btnDrafts;
         private SimpleButton _btnCounteragents;
         private SimpleButton _btnIncoming;
@@ -91,7 +93,7 @@ namespace Pages
             labelOrg.Location = new Point(8, 12);
             _legalEntityCombo.Location = new Point(120, 8);
 
-            var buttonsPanel = new PanelControl
+            _buttonsPanel = new PanelControl
             {
                 Dock = DockStyle.Top,
                 Height = 44,
@@ -108,7 +110,7 @@ namespace Pages
             flowBtns.Controls.Add(_btnDrafts);
             flowBtns.Controls.Add(_btnCounteragents);
             flowBtns.Controls.Add(_btnIncoming);
-            buttonsPanel.Controls.Add(flowBtns);
+            _buttonsPanel.Controls.Add(flowBtns);
             _btnDrafts.Location = new Point(8, 8);
             _btnCounteragents.Location = new Point(136, 8);
             _btnIncoming.Location = new Point(264, 8);
@@ -169,8 +171,9 @@ namespace Pages
 
             _btnBack = new SimpleButton
             {
-                Text = "< Назад к входящим",
-                Width = 160,
+                Text = "← Назад к входящим",
+                Width = 120,
+                Height = 20,
                 Dock = DockStyle.Left
             };
             _btnBack.Click += (s, e) =>
@@ -183,11 +186,15 @@ namespace Pages
             {
                 Dock = DockStyle.Fill,
                 AutoSizeMode = LabelAutoSizeMode.Vertical,
-                Appearance = { Font = new Font("Segoe UI", 9, FontStyle.Regular) }
+                Appearance =
+                {
+                    Font = new Font("Segoe UI", 9, FontStyle.Regular),
+                    TextOptions = { VAlignment = DevExpress.Utils.VertAlignment.Center }
+                },
+                Padding = new Padding(16, 0, 0, 0)
             };
 
             detailsTop.Controls.Add(_detailsHeader);
-            detailsTop.Controls.Add(_btnBack);
 
             var actionsPanel = new PanelControl
             {
@@ -294,10 +301,22 @@ namespace Pages
             _detailsPanel.Controls.Add(actionsPanel);
             _detailsPanel.Controls.Add(detailsTop);
 
+            // Отдельная панель под кнопку «Назад к входящим»
+            _backPanel = new PanelControl
+            {
+                Dock = DockStyle.Top,
+                Height = 28,
+                Padding = new Padding(8, 4, 8, 0),
+                Visible = false,
+                BorderStyle = BorderStyles.NoBorder
+            };
+            _backPanel.Controls.Add(_btnBack);
+
             Controls.Add(_detailsPanel);
             Controls.Add(_grid);
+            Controls.Add(_backPanel);
             Controls.Add(_filterPanel);
-            Controls.Add(buttonsPanel);
+            Controls.Add(_buttonsPanel);
             Controls.Add(topPanel);
 
             _currentMode = ModeCounteragents;
@@ -312,6 +331,11 @@ namespace Pages
             _filterPanel.Visible = (mode == ModeIncoming);
             _detailsPanel.Visible = (mode == ModeIncomingDetails);
             _grid.Visible = (mode != ModeIncomingDetails);
+
+            if (_buttonsPanel != null)
+                _buttonsPanel.Visible = (mode != ModeIncomingDetails);
+            if (_backPanel != null)
+                _backPanel.Visible = (mode == ModeIncomingDetails);
 
             if (mode == ModeIncoming)
             {
@@ -388,6 +412,7 @@ namespace Pages
                 cols["DocumentDate"].Caption = "От";
                 cols["DocumentDate"].VisibleIndex = 3;
                 cols["DocumentDate"].AppearanceCell.TextOptions.HAlignment = DevExpress.Utils.HorzAlignment.Center;
+                cols["DocumentDate"].Width = 80;
             }
             if (cols["SentToEdo"] != null)
             {
@@ -395,8 +420,18 @@ namespace Pages
                 cols["SentToEdo"].VisibleIndex = 4;
                 cols["SentToEdo"].AppearanceCell.TextOptions.HAlignment = DevExpress.Utils.HorzAlignment.Center;
             }
-            if (cols["TotalVat"] != null) { cols["TotalVat"].Caption = "Сумма НДС"; cols["TotalVat"].VisibleIndex = 5; }
-            if (cols["TotalAmount"] != null) { cols["TotalAmount"].Caption = "Сумма"; cols["TotalAmount"].VisibleIndex = 6; }
+            if (cols["TotalVat"] != null)
+            {
+                cols["TotalVat"].Caption = "Сумма НДС";
+                cols["TotalVat"].VisibleIndex = 5;
+                cols["TotalVat"].Width = 100;
+            }
+            if (cols["TotalAmount"] != null)
+            {
+                cols["TotalAmount"].Caption = "Сумма";
+                cols["TotalAmount"].VisibleIndex = 6;
+                cols["TotalAmount"].Width = 110;
+            }
             if (cols["StatusText"] != null) { cols["StatusText"].Caption = "Статус ЭДО"; cols["StatusText"].VisibleIndex = 7; }
             if (cols["SupplierFound"] != null)
             {
@@ -411,7 +446,7 @@ namespace Pages
             {
                 cols["IikoStatus"].Caption = "Статус накладной";
                 cols["IikoStatus"].VisibleIndex = 9;
-                cols["IikoStatus"].Width = 280;
+                cols["IikoStatus"].Width = 220;
             }
             if (cols["IikoSupplierId"] != null) cols["IikoSupplierId"].Visible = false;
 
@@ -494,12 +529,24 @@ namespace Pages
             {
                 var items = await _client.GetUtdItemsAsync(boxId, row.MessageId, row.EntityId).ConfigureAwait(true);
 
+                var supplierName = row.CounterpartyName ?? "";
+                var supplierInn = row.CounterpartyInn ?? "";
+                var docNumber = row.DocumentNumber ?? "";
+                var docDate = row.DocumentDate ?? "";
                 _detailsHeader.Text =
-                    $"Поставщик: {row.CounterpartyName} (ИНН {row.CounterpartyInn}){Environment.NewLine}" +
-                    $"Документ: {row.DocumentNumber} от {row.DocumentDate}";
+                    $"Наименование: {supplierName}{Environment.NewLine}" +
+                    $"ИНН: {supplierInn}{Environment.NewLine}" +
+                    $"Номер и дата документа: {docNumber} от {docDate}";
 
                 _currentDocument = row;
                 _currentItems = items ?? Array.Empty<UtdItemRow>();
+
+                // Единицы измерения поставщика делаем строчными
+                foreach (var it in _currentItems)
+                {
+                    if (!string.IsNullOrWhiteSpace(it.UnitName))
+                        it.UnitName = it.UnitName.ToLowerInvariant();
+                }
 
                 // Подгружаем прайс-лист поставщика и пытаемся заранее проставить привязки «товар поставщика → наш товар».
                 await EnsureMappingsForCurrentDocumentAsync().ConfigureAwait(true);
@@ -514,10 +561,19 @@ namespace Pages
                 if (_detailsView.Columns["ItemArticle"] != null) _detailsView.Columns["ItemArticle"].Visible = false;
 
                 int col = 0;
-                if (_detailsView.Columns["LineIndex"] != null) { _detailsView.Columns["LineIndex"].Caption = "№"; _detailsView.Columns["LineIndex"].VisibleIndex = col++; }
+                if (_detailsView.Columns["LineIndex"] != null)
+                {
+                    _detailsView.Columns["LineIndex"].Caption = "№";
+                    _detailsView.Columns["LineIndex"].VisibleIndex = col++;
+                    _detailsView.Columns["LineIndex"].Width = 40;
+                }
                 if (_detailsView.Columns["ItemVendorCode"] != null) { _detailsView.Columns["ItemVendorCode"].Caption = "Код поставщика"; _detailsView.Columns["ItemVendorCode"].VisibleIndex = col++; }
                 if (_detailsView.Columns["SupplierProductName"] != null) { _detailsView.Columns["SupplierProductName"].Caption = "Наименование у поставщика"; _detailsView.Columns["SupplierProductName"].VisibleIndex = col++; }
-                if (_detailsView.Columns["UnitName"] != null) { _detailsView.Columns["UnitName"].Caption = "Тара"; _detailsView.Columns["UnitName"].VisibleIndex = col++; }
+                if (_detailsView.Columns["UnitName"] != null)
+                {
+                    _detailsView.Columns["UnitName"].Caption = "Ед. изм. у поставщика";
+                    _detailsView.Columns["UnitName"].VisibleIndex = col++;
+                }
                 if (_detailsView.Columns["IikoProductName"] != null) { _detailsView.Columns["IikoProductName"].Caption = "Наименование товара у нас"; _detailsView.Columns["IikoProductName"].VisibleIndex = col++; }
                 if (_detailsView.Columns["Unit"] != null) { _detailsView.Columns["Unit"].Caption = "В таре"; _detailsView.Columns["Unit"].VisibleIndex = col++; }
                 if (_detailsView.Columns["Quantity"] != null) { _detailsView.Columns["Quantity"].Caption = "Кол-во"; _detailsView.Columns["Quantity"].VisibleIndex = col++; }
