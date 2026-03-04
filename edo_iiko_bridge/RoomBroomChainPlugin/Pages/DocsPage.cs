@@ -146,6 +146,10 @@ namespace Pages
             _gridView.Columns.AddField("Kpp").Caption = "КПП";
             _gridView.OptionsBehavior.Editable = false;
             _gridView.OptionsView.ShowGroupPanel = false;
+            // Включаем панель поиска (лупа в правом верхнем углу грида).
+            _gridView.OptionsFind.AlwaysVisible = true;
+            _gridView.OptionsFind.ShowCloseButton = true;
+            _gridView.OptionsFind.FindNullPrompt = "Введите текст для поиска (номер УПД, сумма и т.д.)";
             _gridView.DoubleClick += GridView_DoubleClick;
 
             // Панель деталей входящей накладной (второй «экран» внутри документов).
@@ -374,13 +378,32 @@ namespace Pages
             if (cols["EntityId"] != null) cols["EntityId"].Visible = false;
             if (cols["CounterpartyName"] != null) { cols["CounterpartyName"].Caption = "Отправитель"; cols["CounterpartyName"].VisibleIndex = 0; }
             if (cols["CounterpartyInn"] != null) { cols["CounterpartyInn"].Caption = "ИНН"; cols["CounterpartyInn"].VisibleIndex = 1; }
-            if (cols["DocumentNumber"] != null) { cols["DocumentNumber"].Caption = "Номер"; cols["DocumentNumber"].VisibleIndex = 2; }
-            if (cols["DocumentDate"] != null) { cols["DocumentDate"].Caption = "От"; cols["DocumentDate"].VisibleIndex = 3; }
-            if (cols["SentToEdo"] != null) { cols["SentToEdo"].Caption = "Отправлен в ЭДО"; cols["SentToEdo"].VisibleIndex = 4; }
+            if (cols["DocumentNumber"] != null)
+            {
+                cols["DocumentNumber"].Caption = "Номер";
+                cols["DocumentNumber"].VisibleIndex = 2;
+            }
+            if (cols["DocumentDate"] != null)
+            {
+                cols["DocumentDate"].Caption = "От";
+                cols["DocumentDate"].VisibleIndex = 3;
+                cols["DocumentDate"].AppearanceCell.TextOptions.HAlignment = DevExpress.Utils.HorzAlignment.Center;
+            }
+            if (cols["SentToEdo"] != null)
+            {
+                cols["SentToEdo"].Caption = "Отправлен в ЭДО";
+                cols["SentToEdo"].VisibleIndex = 4;
+                cols["SentToEdo"].AppearanceCell.TextOptions.HAlignment = DevExpress.Utils.HorzAlignment.Center;
+            }
             if (cols["TotalVat"] != null) { cols["TotalVat"].Caption = "Сумма НДС"; cols["TotalVat"].VisibleIndex = 5; }
             if (cols["TotalAmount"] != null) { cols["TotalAmount"].Caption = "Сумма"; cols["TotalAmount"].VisibleIndex = 6; }
             if (cols["StatusText"] != null) { cols["StatusText"].Caption = "Статус ЭДО"; cols["StatusText"].VisibleIndex = 7; }
-            if (cols["SupplierFound"] != null) { cols["SupplierFound"].Caption = "Поставщик"; cols["SupplierFound"].VisibleIndex = 8; }
+            if (cols["SupplierFound"] != null)
+            {
+                cols["SupplierFound"].Caption = "Поставщик";
+                cols["SupplierFound"].VisibleIndex = 8;
+                cols["SupplierFound"].Width = 80;
+            }
             if (cols["Supplier"] != null) cols["Supplier"].Visible = false;
             // Столбик «Накладная iiko» больше не показываем отдельно — номер включён в статус.
             if (cols["IikoInvoice"] != null) cols["IikoInvoice"].Visible = false;
@@ -388,7 +411,7 @@ namespace Pages
             {
                 cols["IikoStatus"].Caption = "Статус накладной";
                 cols["IikoStatus"].VisibleIndex = 9;
-                cols["IikoStatus"].Width = 260;
+                cols["IikoStatus"].Width = 280;
             }
             if (cols["IikoSupplierId"] != null) cols["IikoSupplierId"].Visible = false;
 
@@ -694,9 +717,9 @@ namespace Pages
                 var inn = d.CounterpartyInn;
                 if (string.IsNullOrWhiteSpace(inn))
                 {
-                    // Нет ИНН → не можем подобрать поставщика в iiko → считаем, что не требует внесения.
+                    // Нет ИНН → не можем подобрать поставщика в iiko → информация о поставщике не заполнена.
                     if (string.IsNullOrWhiteSpace(d.IikoStatus))
-                        d.IikoStatus = "Не требует внесения в iiko";
+                        d.IikoStatus = "Информация о поставщике не заполнена";
                     continue;
                 }
 
@@ -710,9 +733,9 @@ namespace Pages
                 }
                 else
                 {
-                    // Поставщик по ИНН в iiko не найден → не требуем внесения.
+                    // Поставщик по ИНН в iiko не найден → информация о поставщике не заполнена.
                     if (string.IsNullOrWhiteSpace(d.IikoStatus))
-                        d.IikoStatus = "Не требует внесения в iiko";
+                        d.IikoStatus = "Информация о поставщике не заполнена";
                 }
             }
 

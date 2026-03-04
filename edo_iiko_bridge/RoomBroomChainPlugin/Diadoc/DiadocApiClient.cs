@@ -404,6 +404,34 @@ namespace RoomBroomChainPlugin.Diadoc
 
             foreach (var d in arr)
             {
+                // Некоторые документы — не УПД (счета и пр.). Фильтруем по DocumentType.TypeNamedId, но аккуратно,
+                // т.к. структура может отличаться (иногда DocumentType — просто строка или null).
+                string typeNamedId = null;
+                try
+                {
+                    var docTypeToken = d["DocumentType"];
+                    if (docTypeToken != null)
+                    {
+                        if (docTypeToken.Type == JTokenType.Object)
+                            typeNamedId = (string)docTypeToken["TypeNamedId"];
+                        else if (docTypeToken.Type == JTokenType.String)
+                            typeNamedId = (string)docTypeToken;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SafeDebugLog("GetDocumentsAsync: error reading DocumentType for doc " +
+                                 ((string)d["DocumentNumber"] ?? "<no-number>") + " msg=" + ex.Message +
+                                 " json=" + d.ToString(Newtonsoft.Json.Formatting.None));
+                }
+
+                if (!string.IsNullOrWhiteSpace(typeNamedId) &&
+                    !string.Equals(typeNamedId, "UniversalTransferDocument", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Берём только УПД, остальные документы в список не попадают.
+                    continue;
+                }
+
                 var meta = d["Metadata"] as JArray;
                 string totalSum = null, totalVat = null, sellerInn = null;
                 if (meta != null)
