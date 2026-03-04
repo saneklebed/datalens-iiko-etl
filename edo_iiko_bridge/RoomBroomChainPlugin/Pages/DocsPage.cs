@@ -38,6 +38,7 @@ namespace Pages
         private SimpleButton _btnSignAndUpload;
         private SimpleButton _btnUploadOnly;
         private SimpleButton _btnReject;
+        private CheckEdit _chkCreateWithPosting;
         private ComboBoxEdit _storeCombo;
         private GridControl _detailsGrid;
         private GridView _detailsView;
@@ -205,6 +206,24 @@ namespace Pages
             var lblStore = new LabelControl { Text = "Склад iiko:", AutoSizeMode = LabelAutoSizeMode.None, Width = 70 };
             _storeCombo = new ComboBoxEdit { Width = 220 };
 
+            // Галочка «С проведением» (отображается внизу справа страницы документов). По умолчанию берётся из настроек.
+            var cfgForCheckbox = ConfigStore.Load();
+            _chkCreateWithPosting = new CheckEdit
+            {
+                Text = "С проведением",
+                Checked = cfgForCheckbox != null && cfgForCheckbox.CreateInvoiceWithPosting,
+                AutoSizeInLayoutControl = true
+            };
+            _chkCreateWithPosting.CheckedChanged += (s, e) =>
+            {
+                var cfg = ConfigStore.Load() ?? new RoomBroomConfig();
+                if (cfg.CreateInvoiceWithPosting != _chkCreateWithPosting.Checked)
+                {
+                    cfg.CreateInvoiceWithPosting = _chkCreateWithPosting.Checked;
+                    ConfigStore.Save(cfg);
+                }
+            };
+
             var flowActions = new FlowLayoutPanel
             {
                 Dock = DockStyle.Fill,
@@ -224,7 +243,24 @@ namespace Pages
             _detailsView.OptionsBehavior.Editable = false;
             _detailsView.OptionsView.ShowGroupPanel = false;
 
+            // Нижняя панель с галочкой «С проведением» — прижата к правому нижнему углу.
+            var bottomPanel = new PanelControl
+            {
+                Dock = DockStyle.Bottom,
+                Height = 30,
+                Padding = new Padding(4, 0, 8, 4)
+            };
+            var bottomFlow = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Right,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false
+            };
+            bottomFlow.Controls.Add(_chkCreateWithPosting);
+            bottomPanel.Controls.Add(bottomFlow);
+
             _detailsPanel.Controls.Add(_detailsGrid);
+            _detailsPanel.Controls.Add(bottomPanel);
             _detailsPanel.Controls.Add(actionsPanel);
             _detailsPanel.Controls.Add(detailsTop);
 
@@ -671,8 +707,8 @@ namespace Pages
                     }
                 }
 
-                var cfg = ConfigStore.Load();
-                var createWithPosting = cfg != null && cfg.CreateInvoiceWithPosting;
+                // Используем галочку на форме как источник правды; она синхронизирует значение в ConfigStore.
+                var createWithPosting = _chkCreateWithPosting != null && _chkCreateWithPosting.Checked;
                 var xml = BuildIncomingInvoiceXml(_currentDocument, _currentItems, _currentDocument.IikoSupplierId, storeId, supplierCodeToNativeGuid, createWithPosting);
                 var result = await _iikoClient.ImportIncomingInvoiceAsync(xml).ConfigureAwait(true);
 
