@@ -53,3 +53,5 @@ Suppressed: java.time.format.DateTimeParseException: Text '2026-03-03' could not
 2026-03-04T14:22:11 storeId=79d6636d-7fe0-4a1b-adbc-bf3def4ca91e supplierId=839e29b8-0318-4733-9375-2e0d89b235e4
 2026-03-04T14:22:11 POST https://oreks-co.iiko.it:443/resto/api/documents/import/incomingInvoice?key=3565cd7d-b462-3fe3-36b9-c9fd46f39992 bodyLength=878
 2026-03-04T14:22:11 HTTP POST error code=409 url=https://oreks-co.iiko.it:443/resto/api/documents/import/incomingInvoice?key=3565cd7d-b462-3fe3-36b9-c9fd46f39992 msg=Удаленный сервер возвратил ошибку: (409) Конфликт. responseBody=Native product for supplier product удалить (OUTER) and supplier User[839e29b8-0318-4733-9375-2e0d89b235e4]@1301014246,r56640095 'Метро' {mainRole=null} is not found
+2026-03-04T14:39:20 storeId=79d6636d-7fe0-4a1b-adbc-bf3def4ca91e supplierId=839e29b8-0318-4733-9375-2e0d89b235e4
+2026-03-04T14:39:21 POST https://oreks-co.iiko.it:443/resto/api/documents/import/incomingInvoice?key=7fa10364-280e-658e-1fcc-cb88b16f97cd bodyLength=933

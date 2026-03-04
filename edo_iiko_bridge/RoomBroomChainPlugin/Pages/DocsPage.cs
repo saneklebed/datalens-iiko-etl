@@ -38,6 +38,7 @@ namespace Pages
         private SimpleButton _btnSignAndUpload;
         private SimpleButton _btnUploadOnly;
         private SimpleButton _btnReject;
+        private SimpleButton _btnRefreshMappings;
         private CheckEdit _chkCreateWithPosting;
         private ComboBoxEdit _storeCombo;
         private GridControl _detailsGrid;
@@ -194,6 +195,7 @@ namespace Pages
             _btnSignAndUpload = new SimpleButton { Text = "Подписать и выгрузить в iiko", Width = 190 };
             _btnUploadOnly = new SimpleButton { Text = "Выгрузить в iiko", Width = 150 };
             _btnReject = new SimpleButton { Text = "Отказать", Width = 100 };
+            _btnRefreshMappings = new SimpleButton { Text = "Обновить прайс-лист", Width = 150 };
 
             _btnUploadOnly.Click += async (s, e) => await UploadToIikoAsync(false);
             _btnSignAndUpload.Click += async (s, e) => await UploadToIikoAsync(true);
@@ -202,6 +204,7 @@ namespace Pages
                 XtraMessageBox.Show("Отказ в подписи будет реализован в следующей версии.", "ЭДО ↔ iiko",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             };
+            _btnRefreshMappings.Click += async (s, e) => await RefreshMappingsAsync();
 
             var lblStore = new LabelControl { Text = "Склад iiko:", AutoSizeMode = LabelAutoSizeMode.None, Width = 70 };
             _storeCombo = new ComboBoxEdit { Width = 220 };
@@ -237,6 +240,7 @@ namespace Pages
             flowActions.Controls.Add(_btnReject);
             flowActions.Controls.Add(lblStore);
             flowActions.Controls.Add(_storeCombo);
+            flowActions.Controls.Add(_btnRefreshMappings);
             actionsPanel.Controls.Add(flowActions);
 
             _detailsGrid = new GridControl { Dock = DockStyle.Fill };
@@ -611,6 +615,19 @@ namespace Pages
             var enabled = _currentAllItemsMapped && _currentItems != null && _currentItems.Length > 0;
             _btnUploadOnly.Enabled = enabled;
             _btnSignAndUpload.Enabled = enabled;
+        }
+
+        /// <summary>
+        /// Кнопка «Обновить прайс-лист» — повторно тянет прайс поставщика и обновляет маппинг/подсветку.
+        /// Удобно, когда пользователь только что добавил привязки в iiko и хочет обновить текущую накладную.
+        /// </summary>
+        private async Task RefreshMappingsAsync()
+        {
+            await EnsureSuppliersLoadedAsync().ConfigureAwait(true);
+            await EnsureMappingsForCurrentDocumentAsync().ConfigureAwait(true);
+            _detailsGrid.RefreshDataSource();
+            _detailsView.RefreshData();
+            UpdateUploadButtonsEnabled();
         }
 
         private void PopulateStoresCombo()
