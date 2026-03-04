@@ -212,7 +212,9 @@ namespace Pages
             {
                 Text = "С проведением",
                 Checked = cfgForCheckbox != null && cfgForCheckbox.CreateInvoiceWithPosting,
-                AutoSizeInLayoutControl = true
+                AutoSizeInLayoutControl = false,
+                Size = new Size(130, 22),
+                Margin = new Padding(0, 4, 0, 0)
             };
             _chkCreateWithPosting.CheckedChanged += (s, e) =>
             {
@@ -247,8 +249,8 @@ namespace Pages
             var bottomPanel = new PanelControl
             {
                 Dock = DockStyle.Bottom,
-                Height = 30,
-                Padding = new Padding(4, 0, 8, 4)
+                Height = 36,
+                Padding = new Padding(4, 4, 40, 4)
             };
             var bottomFlow = new FlowLayoutPanel
             {
