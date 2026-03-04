@@ -32,6 +32,7 @@ namespace RoomBroomChainPlugin.Iiko
         public string NativeProductName { get; set; }   // наименование товара в iiko (если есть в ответе API)
         public string SupplierProductNum { get; set; }  // артикул у поставщика
         public string SupplierProductCode { get; set; } // код у поставщика
+        public string ContainerName { get; set; }       // наименование фасовки (container/name)
     }
 
     public class DocumentValidationResult
@@ -40,6 +41,19 @@ namespace RoomBroomChainPlugin.Iiko
         public bool? Valid { get; set; }
         public bool? Warning { get; set; }
         public string RawXml { get; set; }
+    }
+
+    /// <summary>Краткая информация о приходной накладной iiko (incomingInvoice) для статусов.</summary>
+    public class IncomingInvoiceInfo
+    {
+        /// <summary>Входящий номер внешнего документа (incomingDocumentNumber).</summary>
+        public string IncomingDocumentNumber { get; set; }
+        /// <summary>Номер накладной в iiko (documentNumber).</summary>
+        public string DocumentNumber { get; set; }
+        /// <summary>Статус документа: NEW / PROCESSED / DELETED.</summary>
+        public string Status { get; set; }
+        /// <summary>Поставщик (guid), если заполнен.</summary>
+        public string SupplierId { get; set; }
     }
 
     /// <summary>Исключение при импорте накладной в iiko (4xx/5xx) — чтобы показать пользователю ответ сервера.</summary>
@@ -537,6 +551,10 @@ namespace RoomBroomChainPlugin.Iiko
                         ?? (string)el.Element("productName") ?? (string)el.Element("name");
                     var supplierProductNum = (string)el.Element("supplierProductNum") ?? (string)el.Element("SupplierProductNum");
                     var supplierProductCode = (string)el.Element("supplierProductCode") ?? (string)el.Element("SupplierProductCode");
+                    var containerEl = el.Element("container") ?? el.Element("Container");
+                    var containerName = containerEl != null
+                        ? ((string)containerEl.Element("name") ?? (string)containerEl.Element("Name"))
+                        : null;
                     if (string.IsNullOrWhiteSpace(nativeProduct) && string.IsNullOrWhiteSpace(nativeProductNum))
                         continue;
 
@@ -546,7 +564,8 @@ namespace RoomBroomChainPlugin.Iiko
                         NativeProductNum = nativeProductNum ?? "",
                         NativeProductName = nativeProductName ?? "",
                         SupplierProductNum = supplierProductNum ?? "",
-                        SupplierProductCode = supplierProductCode ?? ""
+                        SupplierProductCode = supplierProductCode ?? "",
+                        ContainerName = containerName ?? ""
                     });
                 }
                 IikoLog.Write("GetSupplierPricelistAsync: loaded " + result.Count + " items for supplier " + supplierIdOrCode);
@@ -571,6 +590,66 @@ namespace RoomBroomChainPlugin.Iiko
             if (result != null)
                 result.RawXml = raw ?? "";
             return result ?? new DocumentValidationResult { RawXml = raw ?? "" };
+        }
+
+        /// <summary>
+        /// Экспорт приходных накладных за период: GET /resto/api/documents/export/incomingInvoice.
+        /// Используется для сопоставления УПД с уже внесёнными приходами (incomingDocumentNumber → documentNumber/status).
+        /// </summary>
+        public async Task<List<IncomingInvoiceInfo>> GetIncomingInvoicesAsync(DateTime from, DateTime to)
+        {
+            // В REST API from/to включительно, время не учитывается.
+            var fromStr = from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            var toStr = to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            var path = $"api/documents/export/incomingInvoice?from={fromStr}&to={toStr}";
+
+            string raw;
+            try
+            {
+                raw = await GetAsync(path).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                IikoLog.Write("GetIncomingInvoicesAsync: error " + ex.Message);
+                return new List<IncomingInvoiceInfo>();
+            }
+
+            if (string.IsNullOrWhiteSpace(raw))
+                return new List<IncomingInvoiceInfo>();
+
+            var result = new List<IncomingInvoiceInfo>();
+            try
+            {
+                var doc = XDocument.Parse(raw);
+                foreach (var el in doc.Descendants())
+                {
+                    if (!string.Equals(el.Name.LocalName, "document", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var incomingNumber = (string)el.Element("incomingDocumentNumber") ?? (string)el.Element("IncomingDocumentNumber");
+                    var docNumber = (string)el.Element("documentNumber") ?? (string)el.Element("DocumentNumber");
+                    var status = (string)el.Element("status") ?? (string)el.Element("Status");
+                    var supplier = (string)el.Element("supplier") ?? (string)el.Element("Supplier");
+
+                    if (string.IsNullOrWhiteSpace(incomingNumber) && string.IsNullOrWhiteSpace(docNumber))
+                        continue;
+
+                    result.Add(new IncomingInvoiceInfo
+                    {
+                        IncomingDocumentNumber = incomingNumber ?? "",
+                        DocumentNumber = docNumber ?? "",
+                        Status = status ?? "",
+                        SupplierId = supplier ?? ""
+                    });
+                }
+                IikoLog.Write("GetIncomingInvoicesAsync: loaded " + result.Count + " documents");
+            }
+            catch (Exception ex)
+            {
+                IikoLog.Write("GetIncomingInvoicesAsync: parse error " + ex.Message);
+            }
+
+            return result;
         }
 
         private static DocumentValidationResult ParseDocumentValidationResult(string raw)

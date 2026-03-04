@@ -355,11 +355,17 @@ namespace Pages
             if (cols["SentToEdo"] != null) { cols["SentToEdo"].Caption = "Отправлен в ЭДО"; cols["SentToEdo"].VisibleIndex = 4; }
             if (cols["TotalVat"] != null) { cols["TotalVat"].Caption = "Сумма НДС"; cols["TotalVat"].VisibleIndex = 5; }
             if (cols["TotalAmount"] != null) { cols["TotalAmount"].Caption = "Сумма"; cols["TotalAmount"].VisibleIndex = 6; }
-            if (cols["StatusText"] != null) { cols["StatusText"].Caption = "Статус"; cols["StatusText"].VisibleIndex = 7; }
+            if (cols["StatusText"] != null) { cols["StatusText"].Caption = "Статус ЭДО"; cols["StatusText"].VisibleIndex = 7; }
             if (cols["SupplierFound"] != null) { cols["SupplierFound"].Caption = "Поставщик"; cols["SupplierFound"].VisibleIndex = 8; }
             if (cols["Supplier"] != null) cols["Supplier"].Visible = false;
-            // Номер накладной iiko (если загружена). Показываем одной колонкой, зелёный фон при наличии номера.
-            if (cols["IikoInvoice"] != null) { cols["IikoInvoice"].Caption = "Накладная iiko"; cols["IikoInvoice"].VisibleIndex = 9; }
+            // Столбик «Накладная iiko» больше не показываем отдельно — номер включён в статус.
+            if (cols["IikoInvoice"] != null) cols["IikoInvoice"].Visible = false;
+            if (cols["IikoStatus"] != null)
+            {
+                cols["IikoStatus"].Caption = "Статус накладной";
+                cols["IikoStatus"].VisibleIndex = 9;
+                cols["IikoStatus"].Width = 260;
+            }
             if (cols["IikoSupplierId"] != null) cols["IikoSupplierId"].Visible = false;
 
             _gridView.CustomDrawCell -= GridView_CustomDrawCell;
@@ -395,8 +401,28 @@ namespace Pages
             }
         }
 
+        private void DetailsView_RowCellStyle(object sender, RowCellStyleEventArgs e)
+        {
+            if (e.RowHandle < 0) return;
+            if (e.Column.FieldName != "IikoProductName")
+                return;
+
+            var view = sender as GridView;
+            var row = view?.GetRow(e.RowHandle) as UtdItemRow;
+            if (row == null)
+                return;
+
+            if (string.IsNullOrWhiteSpace(row.Product))
+            {
+                // Нет привязки к товару iiko → подсветить как на примере из iiko (красная ячейка "Выберите").
+                e.Appearance.BackColor = Color.FromArgb(255, 200, 200);
+                e.Appearance.ForeColor = Color.DarkRed;
+            }
+        }
+
         private DiadocDocumentRow _currentDocument;
         private UtdItemRow[] _currentItems;
+        private bool _currentAllItemsMapped;
 
         private async void GridView_DoubleClick(object sender, EventArgs e)
         {
@@ -428,13 +454,15 @@ namespace Pages
                 _currentDocument = row;
                 _currentItems = items ?? Array.Empty<UtdItemRow>();
 
+                // Подгружаем прайс-лист поставщика и пытаемся заранее проставить привязки «товар поставщика → наш товар».
+                await EnsureMappingsForCurrentDocumentAsync().ConfigureAwait(true);
+
                 _detailsGrid.DataSource = _currentItems;
                 _detailsView.PopulateColumns();
 
                 if (_detailsView.Columns["Product"] != null) _detailsView.Columns["Product"].Visible = false;
                 if (_detailsView.Columns["Gtin"] != null) _detailsView.Columns["Gtin"].Visible = false;
                 if (_detailsView.Columns["ItemAdditionalInfo"] != null) _detailsView.Columns["ItemAdditionalInfo"].Visible = false;
-                if (_detailsView.Columns["Unit"] != null) _detailsView.Columns["Unit"].Visible = false;
                 // Артикул дублирует «Код поставщика» — не показываем при провале в накладную
                 if (_detailsView.Columns["ItemArticle"] != null) _detailsView.Columns["ItemArticle"].Visible = false;
 
@@ -443,10 +471,17 @@ namespace Pages
                 if (_detailsView.Columns["ItemVendorCode"] != null) { _detailsView.Columns["ItemVendorCode"].Caption = "Код поставщика"; _detailsView.Columns["ItemVendorCode"].VisibleIndex = col++; }
                 if (_detailsView.Columns["SupplierProductName"] != null) { _detailsView.Columns["SupplierProductName"].Caption = "Наименование у поставщика"; _detailsView.Columns["SupplierProductName"].VisibleIndex = col++; }
                 if (_detailsView.Columns["UnitName"] != null) { _detailsView.Columns["UnitName"].Caption = "Тара"; _detailsView.Columns["UnitName"].VisibleIndex = col++; }
+                if (_detailsView.Columns["IikoProductName"] != null) { _detailsView.Columns["IikoProductName"].Caption = "Наименование товара у нас"; _detailsView.Columns["IikoProductName"].VisibleIndex = col++; }
+                if (_detailsView.Columns["Unit"] != null) { _detailsView.Columns["Unit"].Caption = "В таре"; _detailsView.Columns["Unit"].VisibleIndex = col++; }
                 if (_detailsView.Columns["Quantity"] != null) { _detailsView.Columns["Quantity"].Caption = "Кол-во"; _detailsView.Columns["Quantity"].VisibleIndex = col++; }
                 if (_detailsView.Columns["Price"] != null) { _detailsView.Columns["Price"].Caption = "Цена"; _detailsView.Columns["Price"].VisibleIndex = col++; }
                 if (_detailsView.Columns["Subtotal"] != null) { _detailsView.Columns["Subtotal"].Caption = "Сумма"; _detailsView.Columns["Subtotal"].VisibleIndex = col++; }
                 if (_detailsView.Columns["Vat"] != null) { _detailsView.Columns["Vat"].Caption = "Сумма НДС"; _detailsView.Columns["Vat"].VisibleIndex = col++; }
+
+                // Подсветка незамапленных строк и блокировка кнопок выгрузки.
+                _detailsView.RowCellStyle -= DetailsView_RowCellStyle;
+                _detailsView.RowCellStyle += DetailsView_RowCellStyle;
+                UpdateUploadButtonsEnabled();
 
                 await EnsureStoresLoadedAsync().ConfigureAwait(true);
                 PopulateStoresCombo();
@@ -503,6 +538,81 @@ namespace Pages
             }
         }
 
+        /// <summary>
+        /// Загружает прайс-лист текущего поставщика и заполняет Product/IikoProductName у строк текущей накладной.
+        /// </summary>
+        private async Task EnsureMappingsForCurrentDocumentAsync()
+        {
+            _currentAllItemsMapped = false;
+            if (_currentDocument == null || _currentItems == null || _currentItems.Length == 0 || _iikoClient == null)
+                return;
+            if (string.IsNullOrWhiteSpace(_currentDocument.IikoSupplierId))
+                return;
+
+            var supplierPricelistKey = _currentDocument.IikoSupplierId;
+            var sup = _suppliers?.FirstOrDefault(s => s.Id == _currentDocument.IikoSupplierId);
+            if (sup != null && !string.IsNullOrWhiteSpace(sup.Code))
+                supplierPricelistKey = sup.Code;
+
+            var pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierPricelistKey).ConfigureAwait(true);
+            if (pricelist == null || pricelist.Count == 0)
+                return;
+
+            var codeToProduct = new Dictionary<string, SupplierPricelistItem>(StringComparer.OrdinalIgnoreCase);
+            foreach (var row in pricelist)
+            {
+                if (string.IsNullOrWhiteSpace(row.NativeProduct))
+                    continue;
+                if (!string.IsNullOrWhiteSpace(row.SupplierProductNum))
+                    codeToProduct[row.SupplierProductNum.Trim()] = row;
+                if (!string.IsNullOrWhiteSpace(row.SupplierProductCode))
+                    codeToProduct[row.SupplierProductCode.Trim()] = row;
+            }
+
+            foreach (var it in _currentItems)
+            {
+                // Сбрасываем предыдущую привязку, чтобы не тянуть старые данные между накладными.
+                it.Product = null;
+                it.IikoProductName = null;
+                it.Unit = null;
+                var code = (it.ItemVendorCode ?? "").Trim();
+                SupplierPricelistItem mapped = null;
+                if (!string.IsNullOrEmpty(code) && codeToProduct.TryGetValue(code, out mapped))
+                {
+                    it.Product = mapped.NativeProduct;
+                    it.IikoProductName = mapped.NativeProductName;
+                    if (!string.IsNullOrWhiteSpace(mapped.ContainerName))
+                        it.Unit = mapped.ContainerName;
+                    continue;
+                }
+
+                var article = (it.ItemArticle ?? "").Trim();
+                if (!string.IsNullOrEmpty(article) && codeToProduct.TryGetValue(article, out mapped))
+                {
+                    it.Product = mapped.NativeProduct;
+                    it.IikoProductName = mapped.NativeProductName;
+                    if (!string.IsNullOrWhiteSpace(mapped.ContainerName))
+                        it.Unit = mapped.ContainerName;
+                }
+            }
+
+            // Для незамапленных строк отображаем плейсхолдер "[выберите]".
+            foreach (var it in _currentItems)
+            {
+                if (string.IsNullOrWhiteSpace(it.Product))
+                    it.IikoProductName = "Отсутствует в прайс-листе";
+            }
+
+            _currentAllItemsMapped = _currentItems.All(it => !string.IsNullOrWhiteSpace(it.Product));
+        }
+
+        private void UpdateUploadButtonsEnabled()
+        {
+            var enabled = _currentAllItemsMapped && _currentItems != null && _currentItems.Length > 0;
+            _btnUploadOnly.Enabled = enabled;
+            _btnSignAndUpload.Enabled = enabled;
+        }
+
         private void PopulateStoresCombo()
         {
             _storeCombo.Properties.Items.Clear();
@@ -546,7 +656,12 @@ namespace Pages
             {
                 var inn = d.CounterpartyInn;
                 if (string.IsNullOrWhiteSpace(inn))
+                {
+                    // Нет ИНН → не можем подобрать поставщика в iiko → считаем, что не требует внесения.
+                    if (string.IsNullOrWhiteSpace(d.IikoStatus))
+                        d.IikoStatus = "Не требует внесения в iiko";
                     continue;
+                }
 
                 if (innToSupplier.TryGetValue(inn.Trim(), out var sup))
                 {
@@ -555,6 +670,12 @@ namespace Pages
                     if (string.IsNullOrWhiteSpace(d.Supplier))
                         d.Supplier = sup.Name ?? "";
                     matched++;
+                }
+                else
+                {
+                    // Поставщик по ИНН в iiko не найден → не требуем внесения.
+                    if (string.IsNullOrWhiteSpace(d.IikoStatus))
+                        d.IikoStatus = "Не требует внесения в iiko";
                 }
             }
 
@@ -653,6 +774,17 @@ namespace Pages
                 return;
             }
 
+            if (_currentItems.Any(it => string.IsNullOrWhiteSpace(it.Product)))
+            {
+                XtraMessageBox.Show(
+                    "Не все строки накладной сопоставлены с товарами iiko.\r\n" +
+                    "Проверьте колонку «Наименование товара у нас» — строки с текстом «Выберите» нужно привязать через прайс-лист поставщика в iiko.",
+                    "Выгрузка в iiko",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
             if (string.IsNullOrWhiteSpace(_currentDocument.IikoSupplierId))
             {
                 XtraMessageBox.Show("Не найден поставщик в iiko по ИНН. Проверьте сопоставление поставщиков.",
@@ -715,10 +847,11 @@ namespace Pages
                 var result = await _iikoClient.ImportIncomingInvoiceAsync(xml).ConfigureAwait(true);
 
                 var valid = result.Valid == true;
+                var iikoNumber = result.DocumentNumber ?? _currentDocument.DocumentNumber;
                 var msg = valid
                     ? (createWithPosting
-                        ? $"Накладная № {result.DocumentNumber ?? _currentDocument.DocumentNumber} успешно сохранена с проведением."
-                        : $"Накладная № {result.DocumentNumber ?? _currentDocument.DocumentNumber} успешно сохранена без проведения.")
+                        ? $"Накладная № {iikoNumber} успешно сохранена с проведением."
+                        : $"Накладная № {iikoNumber} успешно сохранена без проведения.")
                     : "Ответ iiko получен, но документ не прошёл валидацию. Проверьте детали в журнале.";
 
                 if (!string.IsNullOrEmpty(result.RawXml))
@@ -726,7 +859,10 @@ namespace Pages
 
                 if (valid)
                 {
-                    _currentDocument.IikoInvoice = result.DocumentNumber ?? _currentDocument.DocumentNumber;
+                    _currentDocument.IikoInvoice = iikoNumber;
+                    _currentDocument.IikoStatus = createWithPosting
+                        ? $"Внесено в iiko с проведением (№ {iikoNumber})"
+                        : $"Внесено в iiko без проведения (№ {iikoNumber})";
                     RefreshCurrentViewAsync();
                 }
 
@@ -742,16 +878,29 @@ namespace Pages
             catch (IikoImportException ie)
             {
                 string msg;
-                if (ie.StatusCode == 409 && !string.IsNullOrEmpty(ie.ResponseBody) &&
-                    ie.ResponseBody.IndexOf("Product is not found", StringComparison.OrdinalIgnoreCase) >= 0)
+                var body = ie.ResponseBody ?? "";
+                if (ie.StatusCode == 409 && !string.IsNullOrEmpty(body))
                 {
-                    msg = "Товар из накладной не найден в номенклатуре iiko.\r\n" +
-                          "Добавьте товар в iiko с нужным артикулом или сопоставьте «Код поставщика» из УПД с артикулом существующего товара.\r\n\r\n" +
-                          "Ответ iiko: " + ie.ResponseBody;
+                    if (body.IndexOf("Product is not found", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        msg = "Товар из накладной не найден в номенклатуре iiko.\r\n" +
+                              "Добавьте товар в iiko с нужным артикулом или сопоставьте «Код поставщика» из УПД с артикулом существующего товара.\r\n\r\n" +
+                              "Ответ iiko: " + body;
+                    }
+                    else if (body.IndexOf("Native product for supplier product", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        msg = "В прайс-листе поставщика в iiko не найдено сопоставление «товар поставщика → наш товар» для одной из строк.\r\n" +
+                              "Откройте в iiko прайс-лист поставщика и заполните колонку «Наш товар» для этой позиции (или удалите лишнюю строку), затем повторите выгрузку.\r\n\r\n" +
+                              "Ответ iiko: " + body;
+                    }
+                    else
+                    {
+                        msg = "Ошибка iiko (HTTP " + ie.StatusCode + "):\r\n" + body;
+                    }
                 }
                 else
                 {
-                    msg = "Ошибка iiko (HTTP " + ie.StatusCode + "):\r\n" + (ie.ResponseBody ?? ie.Message);
+                    msg = "Ошибка iiko (HTTP " + ie.StatusCode + "):\r\n" + (body != "" ? body : ie.Message);
                 }
                 XtraMessageBox.Show(msg, "Выгрузка в iiko", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
@@ -780,6 +929,87 @@ namespace Pages
                     await _client.GetDocumentsAsync(boxId, true, from, to, ca).ConfigureAwait(false)
                 ).ConfigureAwait(true) ?? new List<DiadocDocumentRow>();
                 await MarkSuppliersAsync(list).ConfigureAwait(true);
+
+                // Подтягиваем из iiko уже внесённые приходы по входящему номеру (incomingDocumentNumber)
+                // и выставляем корректный статус / номер накладной.
+                if (_iikoClient != null && list.Count > 0)
+                {
+                    var docsForExport = list
+                        .Where(d => d.SupplierFound && !string.IsNullOrWhiteSpace(d.DocumentNumber))
+                        .ToList();
+                    var dateCandidates = docsForExport
+                        .Select(d =>
+                        {
+                            if (DateTime.TryParse(d.DocumentDate, out var dt))
+                                return (DateTime?)dt.Date;
+                            return null;
+                        })
+                        .Where(dt => dt.HasValue)
+                        .Select(dt => dt.Value)
+                        .ToList();
+
+                    if (dateCandidates.Count > 0)
+                    {
+                        var minDate = dateCandidates.Min();
+                        var maxDate = dateCandidates.Max();
+
+                        var incomingInvoices = await _iikoClient
+                            .GetIncomingInvoicesAsync(minDate, maxDate)
+                            .ConfigureAwait(true) ?? new List<IncomingInvoiceInfo>();
+
+                        var byIncomingNumber = new Dictionary<string, IncomingInvoiceInfo>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var inv in incomingInvoices)
+                        {
+                            var incomingNum = (inv.IncomingDocumentNumber ?? "").Trim();
+                            if (string.IsNullOrEmpty(incomingNum))
+                                continue;
+                            if (!byIncomingNumber.ContainsKey(incomingNum))
+                                byIncomingNumber[incomingNum] = inv;
+                        }
+
+                        foreach (var d in list)
+                        {
+                            // Если поставщика нет в iiko — статус уже выставлен как "Не требует внесения".
+                            if (!d.SupplierFound)
+                                continue;
+
+                            var key = (d.DocumentNumber ?? "").Trim();
+                            if (!string.IsNullOrEmpty(key) && byIncomingNumber.TryGetValue(key, out var inv))
+                            {
+                                var num = (inv.DocumentNumber ?? "").Trim();
+                                if (!string.IsNullOrEmpty(num))
+                                    d.IikoInvoice = num;
+
+                                var status = (inv.Status ?? "").Trim().ToUpperInvariant();
+                                if (status == "PROCESSED")
+                                {
+                                    d.IikoStatus = string.IsNullOrEmpty(num)
+                                        ? "Внесено в iiko с проведением"
+                                        : $"Внесено в iiko с проведением (№ {num})";
+                                }
+                                else if (status == "NEW" || string.IsNullOrEmpty(status))
+                                {
+                                    d.IikoStatus = string.IsNullOrEmpty(num)
+                                        ? "Внесено в iiko без проведения"
+                                        : $"Внесено в iiko без проведения (№ {num})";
+                                }
+                                else if (status == "DELETED")
+                                {
+                                    d.IikoStatus = string.IsNullOrEmpty(num)
+                                        ? "Накладная в iiko удалена"
+                                        : $"Накладная в iiko удалена (№ {num})";
+                                }
+
+                                continue;
+                            }
+
+                            // Поставщик найден, но по входящему номеру прихода в iiko нет.
+                            if (string.IsNullOrWhiteSpace(d.IikoStatus))
+                                d.IikoStatus = "Не внесено в iiko";
+                        }
+                    }
+                }
+
                 _grid.DataSource = list;
                 ApplyDocumentsColumns();
             }

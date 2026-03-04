@@ -21,6 +21,8 @@ namespace RoomBroomChainPlugin.Diadoc
         public string ItemArticle { get; set; }
         public string Gtin { get; set; }
         public string ItemAdditionalInfo { get; set; }
+        /// <summary>Наименование товара в нашей системе (iiko), если найдена привязка по прайс-листу.</summary>
+        public string IikoProductName { get; set; }
     }
 }
 

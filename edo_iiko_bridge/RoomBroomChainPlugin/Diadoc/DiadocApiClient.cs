@@ -732,5 +732,7 @@ namespace RoomBroomChainPlugin.Diadoc
         public string IikoInvoice { get; set; }
         /// <summary>Идентификатор поставщика в iiko (если найден по ИНН).</summary>
         public string IikoSupplierId { get; set; }
+        /// <summary>Статус накладной относительно iiko (не внесена / внесена без/с проведением / не требует внесения).</summary>
+        public string IikoStatus { get; set; }
     }
 }
