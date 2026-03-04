@@ -156,3 +156,7 @@
 2026-03-04T14:38:09 GetUtdItemsAsync: saved utd_last.xml to C:\Users\Orange\AppData\Local\RoomBroomChainPlugin\utd_last.xml
 2026-03-04T14:38:09 GetUtdItemsAsync: using ФНС ТаблСчФакт/СведТов format
 2026-03-04T14:38:09 GetUtdItemsAsync: parsed rows count=2
+2026-03-04T14:50:16 GetUtdItemsAsync: start
+2026-03-04T14:50:16 GetUtdItemsAsync: saved utd_last.xml to C:\Users\Orange\AppData\Local\RoomBroomChainPlugin\utd_last.xml
+2026-03-04T14:50:16 GetUtdItemsAsync: using ФНС ТаблСчФакт/СведТов format
+2026-03-04T14:50:16 GetUtdItemsAsync: parsed rows count=1
