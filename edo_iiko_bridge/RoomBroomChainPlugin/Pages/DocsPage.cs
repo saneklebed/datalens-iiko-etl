@@ -193,14 +193,34 @@ namespace Pages
             };
 
             _btnSignAndUpload = new SimpleButton { Text = "Подписать и выгрузить в iiko", Width = 190 };
-            _btnUploadOnly = new SimpleButton { Text = "Выгрузить в iiko", Width = 150 };
             _btnReject = new SimpleButton { Text = "Отказать", Width = 100 };
+            _btnUploadOnly = new SimpleButton { Text = "Выгрузить в iiko", Width = 150 };
             _btnRefreshMappings = new SimpleButton { Text = "Обновить прайс-лист", Width = 150 };
 
             _btnUploadOnly.Click += async (s, e) => await UploadToIikoAsync(false);
-            _btnSignAndUpload.Click += async (s, e) => await UploadToIikoAsync(true);
+            _btnSignAndUpload.Click += async (s, e) =>
+            {
+                var cfg = ConfigStore.Load();
+                if (cfg != null && cfg.ConfirmSignOrReject)
+                {
+                    var r = XtraMessageBox.Show("Подписать и выгрузить накладную в iiko?", "Подтверждение",
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                    if (r != DialogResult.Yes)
+                        return;
+                }
+                await UploadToIikoAsync(true);
+            };
             _btnReject.Click += (s, e) =>
             {
+                var cfg = ConfigStore.Load();
+                if (cfg != null && cfg.ConfirmSignOrReject)
+                {
+                    var r = XtraMessageBox.Show("Отказать контрагенту в подписи документа?", "Подтверждение",
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                    if (r != DialogResult.Yes)
+                        return;
+                }
+
                 XtraMessageBox.Show("Отказ в подписи будет реализован в следующей версии.", "ЭДО ↔ iiko",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             };
@@ -236,8 +256,8 @@ namespace Pages
                 WrapContents = false
             };
             flowActions.Controls.Add(_btnSignAndUpload);
-            flowActions.Controls.Add(_btnUploadOnly);
             flowActions.Controls.Add(_btnReject);
+            flowActions.Controls.Add(_btnUploadOnly);
             flowActions.Controls.Add(lblStore);
             flowActions.Controls.Add(_storeCombo);
             flowActions.Controls.Add(_btnRefreshMappings);

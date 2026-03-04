@@ -15,6 +15,7 @@ namespace Pages
         private readonly TextEdit _token = new TextEdit();
         private readonly SimpleButton _save = new SimpleButton();
         private readonly ToggleSwitch _createInvoiceWithPosting = new ToggleSwitch();
+        private readonly ToggleSwitch _confirmSignOrReject = new ToggleSwitch();
         private readonly ToggleSwitch _enableReports = new ToggleSwitch();
 
         public SettingsPage()
@@ -57,8 +58,12 @@ namespace Pages
             _save.Click += OnSaveClick;
 
             _createInvoiceWithPosting.Properties.OffText = "Выкл";
-            _createInvoiceWithPosting.Properties.OnText = "Создавать накладные с проведением";
+            _createInvoiceWithPosting.Properties.OnText = "Вкл";
             _createInvoiceWithPosting.Properties.ShowText = true;
+
+            _confirmSignOrReject.Properties.OffText = "Выкл";
+            _confirmSignOrReject.Properties.OnText = "Вкл";
+            _confirmSignOrReject.Properties.ShowText = true;
 
             _enableReports.Properties.OffText = "Выкл";
             _enableReports.Properties.OnText = "Вкл";
@@ -69,49 +74,23 @@ namespace Pages
             inner.Controls.Add(_token);
             inner.Controls.Add(_save);
             inner.Controls.Add(_createInvoiceWithPosting);
+            inner.Controls.Add(_confirmSignOrReject);
 
             var g = inner.Root;
             g.AddItem("", operatorLabel).TextVisible = false;
             g.AddItem("Логин", _login);
             g.AddItem("Пароль", _password);
             g.AddItem("Api Token", _token);
-            g.AddItem("", _createInvoiceWithPosting).TextVisible = false;
+
+            var postingLabel = g.AddItem("Создавать накладные с проведением", _createInvoiceWithPosting);
+            postingLabel.TextVisible = true;
+
+            var confirmLabel = g.AddItem("Доп. подтверждение для подписи/отказа", _confirmSignOrReject);
+            confirmLabel.TextVisible = true;
             g.AddItem("", _save).TextVisible = false;
 
-            var reportsGroup = new GroupControl
-            {
-                Text = "Отчёты",
-                Dock = DockStyle.Top,
-                Height = 110,
-                Padding = new Padding(8),
-            };
-
-            var reportsLayout = new LayoutControl { Dock = DockStyle.Fill };
-            reportsLayout.Root = new LayoutControlGroup
-            {
-                EnableIndentsWithoutBorders = DevExpress.Utils.DefaultBoolean.True,
-                TextVisible = false,
-                GroupBordersVisible = false,
-            };
-            reportsGroup.Controls.Add(reportsLayout);
-
-            var reportsHint = new LabelControl
-            {
-                Text = "Автоматически формировать отчёт после получения/подписания документов",
-                AutoSizeMode = LabelAutoSizeMode.Vertical,
-            };
-
-            reportsLayout.Controls.Add(reportsHint);
-            reportsLayout.Controls.Add(_enableReports);
-            var rg = reportsLayout.Root;
-            rg.AddItem("", reportsHint).TextVisible = false;
-            rg.AddItem("", _enableReports).TextVisible = false;
-
-            var spacer = new Panel { Dock = DockStyle.Top, Height = 8 };
-
+            // Блок «Отчёты» временно отключён — настройка автоотчётов не используется.
             Controls.Add(new Panel { Dock = DockStyle.Fill }); // заполнитель
-            Controls.Add(reportsGroup);
-            Controls.Add(spacer);
             Controls.Add(edoGroup);
         }
 
@@ -122,6 +101,7 @@ namespace Pages
             _password.Text = cfg.DiadocPassword ?? "";
             _token.Text = cfg.DiadocApiToken ?? "";
             _createInvoiceWithPosting.IsOn = cfg.CreateInvoiceWithPosting;
+            _confirmSignOrReject.IsOn = cfg.ConfirmSignOrReject;
             _enableReports.IsOn = cfg.EnableReports;
         }
 
@@ -133,6 +113,7 @@ namespace Pages
                 DiadocPassword = _password.Text ?? "",
                 DiadocApiToken = _token.Text?.Trim() ?? "",
                 CreateInvoiceWithPosting = _createInvoiceWithPosting.IsOn,
+                ConfirmSignOrReject = _confirmSignOrReject.IsOn,
                 EnableReports = _enableReports.IsOn,
             };
 

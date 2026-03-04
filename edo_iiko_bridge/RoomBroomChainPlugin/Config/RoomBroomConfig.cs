@@ -20,6 +20,9 @@ namespace RoomBroomChainPlugin.Config
 
         [DataMember(Order = 5)]
         public bool EnableReports { get; set; } = false;
+
+        [DataMember(Order = 6)]
+        public bool ConfirmSignOrReject { get; set; } = false;
     }
 }
 
