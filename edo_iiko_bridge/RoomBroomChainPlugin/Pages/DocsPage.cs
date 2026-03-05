@@ -450,24 +450,32 @@ namespace Pages
             {
                 cols["Selected"].Caption = "Выбрать накладную";
                 cols["Selected"].VisibleIndex = 0;
-                cols["Selected"].Width = 36;
+                cols["Selected"].Width = 95;
                 var repoCheck = new DevExpress.XtraEditors.Repository.RepositoryItemCheckEdit();
                 _gridView.GridControl.RepositoryItems.Add(repoCheck);
                 cols["Selected"].ColumnEdit = repoCheck;
                 cols["Selected"].OptionsColumn.AllowEdit = true;
             }
-            // Столбец «Привязка»: пусто если поставщик не в iiko, иначе ✓ зелёная / ✗ красная
+            // Столбец «Все ли привязки сделаны?»: только символы (✓/✗/пусто), по центру, крупнее
             if (cols["RequiresBinding"] != null)
             {
-                cols["RequiresBinding"].Caption = "Привязка";
+                cols["RequiresBinding"].Caption = "Все ли привязки сделаны?";
                 cols["RequiresBinding"].VisibleIndex = 1;
-                cols["RequiresBinding"].Width = 52;
+                cols["RequiresBinding"].Width = 58;
                 cols["RequiresBinding"].OptionsColumn.AllowEdit = false;
                 cols["RequiresBinding"].DisplayFormat.FormatType = DevExpress.Utils.FormatType.None;
+                var repoText = new DevExpress.XtraEditors.Repository.RepositoryItemTextEdit();
+                _gridView.GridControl.RepositoryItems.Add(repoText);
+                cols["RequiresBinding"].ColumnEdit = repoText;
             }
 
             if (cols["CounterpartyName"] != null) { cols["CounterpartyName"].Caption = "Отправитель"; cols["CounterpartyName"].VisibleIndex = 2; }
-            if (cols["CounterpartyInn"] != null) { cols["CounterpartyInn"].Caption = "ИНН"; cols["CounterpartyInn"].VisibleIndex = 3; }
+            if (cols["CounterpartyInn"] != null)
+            {
+                cols["CounterpartyInn"].Caption = "ИНН";
+                cols["CounterpartyInn"].VisibleIndex = 3;
+                cols["CounterpartyInn"].Width = 90;
+            }
             if (cols["DocumentNumber"] != null)
             {
                 cols["DocumentNumber"].Caption = "Номер";
@@ -565,7 +573,10 @@ namespace Pages
                     e.DisplayText = "";
                     return;
                 }
-                // Поставщик найден: зелёная галочка если все привязки сделаны, иначе красный крестик
+                // Поставщик найден: зелёная галочка если все привязки в рамках накладной сделаны, иначе красный крестик
+                e.Appearance.TextOptions.HAlignment = DevExpress.Utils.HorzAlignment.Center;
+                e.Appearance.TextOptions.VAlignment = DevExpress.Utils.VertAlignment.Center;
+                e.Appearance.Font = new Font(e.Appearance.Font?.FontFamily ?? SystemFonts.DefaultFont.FontFamily, 14f, FontStyle.Bold);
                 if (row.AllItemsMapped)
                 {
                     e.Appearance.ForeColor = Color.Green;
@@ -611,7 +622,8 @@ namespace Pages
             }
             _batchActionsPanel.Visible = true;
             _ = EnsureBatchStoreComboPopulated();
-            var anyRequiresBinding = selected.Any(r => r.RequiresBinding || (r.SupplierFound && !r.AllItemsMapped));
+            // Блокируем кнопки только если среди выбранных есть накладные без поставщика в iiko (требуется привязка поставщика)
+            var anyRequiresBinding = selected.Any(r => r.RequiresBinding);
             if (anyRequiresBinding)
             {
                 _btnBatchSignAndUpload.Enabled = false;
