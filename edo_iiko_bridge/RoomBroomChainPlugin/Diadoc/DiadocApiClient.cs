@@ -4,6 +4,7 @@ using System.IO;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
+using System.Globalization;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using RoomBroomChainPlugin.Config;
@@ -266,6 +267,47 @@ namespace RoomBroomChainPlugin.Diadoc
             return _token;
         }
 
+        /// <summary>
+        /// Нормализует дату/время из Diadoc (CreationTimestamp и подобные) в формат "dd.MM.yyyy".
+        /// Если распарсить не удалось — возвращает исходную строку.
+        /// </summary>
+        private static string NormalizeDisplayDate(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return "";
+
+            DateTime dt;
+
+            // Попытка 1: универсальный парсинг (ISO 8601, Roundtrip и т.п.).
+            if (DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out dt) ||
+                DateTime.TryParse(raw, CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out dt) ||
+                DateTime.TryParse(raw, null, DateTimeStyles.RoundtripKind, out dt))
+            {
+                return dt.ToLocalTime().ToString("dd.MM.yyyy");
+            }
+
+            // Попытка 2: явные шаблоны, которые мы видели в UI (MM/dd/yyyy HH:mm:ss и т.п.).
+            var formats = new[]
+            {
+                "MM/dd/yyyy HH:mm:ss",
+                "MM/dd/yyyy",
+                "dd.MM.yyyy HH:mm:ss",
+                "dd.MM.yyyy"
+            };
+            foreach (var fmt in formats)
+            {
+                if (DateTime.TryParseExact(raw, fmt, CultureInfo.InvariantCulture,
+                        DateTimeStyles.None, out dt))
+                {
+                    return dt.ToString("dd.MM.yyyy");
+                }
+            }
+
+            // Не смогли распарсить — отдаём как есть.
+            return raw;
+        }
+
         /// <summary>GET /GetMyOrganizations</summary>
         public async Task<List<DiadocOrg>> GetMyOrganizationsAsync()
         {
@@ -370,18 +412,6 @@ namespace RoomBroomChainPlugin.Diadoc
 
             var cleanBoxId = StripBoxIdDomain(boxId.Trim());
             var filter = incoming ? "Any.InboundNotRevoked" : "Any.Draft";
-            var pq = new StringBuilder("V3/GetDocuments");
-            pq.Append("?boxId=").Append(Uri.EscapeDataString(cleanBoxId));
-            pq.Append("&filterCategory=").Append(Uri.EscapeDataString(filter));
-            pq.Append("&count=100");
-            pq.Append("&sortDirection=Descending");
-            if (fromDate.HasValue)
-                pq.Append("&fromDocumentDate=").Append(Uri.EscapeDataString(fromDate.Value.ToString("dd.MM.yyyy")));
-            if (toDate.HasValue)
-                pq.Append("&toDocumentDate=").Append(Uri.EscapeDataString(toDate.Value.ToString("dd.MM.yyyy")));
-
-            var json = await PerformRequestAsync("GET", pq.ToString(), AuthHeader())
-                .ConfigureAwait(false);
 
             var boxToName = new Dictionary<string, CounteragentRow>(StringComparer.OrdinalIgnoreCase);
             var innToName = new Dictionary<string, CounteragentRow>(StringComparer.OrdinalIgnoreCase);
@@ -397,15 +427,38 @@ namespace RoomBroomChainPlugin.Diadoc
                 }
             }
 
-            var root = JObject.Parse(json);
-            var arr = root["Documents"] as JArray;
             var list = new List<DiadocDocumentRow>();
-            if (arr == null) return list;
+            string afterIndexKey = null;
 
-            foreach (var d in arr)
+            for (int page = 0; page < 50; page++)
             {
-                // Некоторые документы — не УПД (счета и пр.). Фильтруем по DocumentType.TypeNamedId, но аккуратно,
-                // т.к. структура может отличаться (иногда DocumentType — просто строка или null).
+                var pq = new StringBuilder("V3/GetDocuments");
+                pq.Append("?boxId=").Append(Uri.EscapeDataString(cleanBoxId));
+                pq.Append("&filterCategory=").Append(Uri.EscapeDataString(filter));
+                pq.Append("&count=100");
+                pq.Append("&sortDirection=Descending");
+                if (fromDate.HasValue)
+                    pq.Append("&fromDocumentDate=").Append(Uri.EscapeDataString(fromDate.Value.ToString("dd.MM.yyyy")));
+                if (toDate.HasValue)
+                    pq.Append("&toDocumentDate=").Append(Uri.EscapeDataString(toDate.Value.ToString("dd.MM.yyyy")));
+                if (!string.IsNullOrEmpty(afterIndexKey))
+                    pq.Append("&afterIndexKey=").Append(Uri.EscapeDataString(afterIndexKey));
+
+                var json = await PerformRequestAsync("GET", pq.ToString(), AuthHeader())
+                    .ConfigureAwait(false);
+
+                var root = JObject.Parse(json);
+                var arr = root["Documents"] as JArray;
+                if (arr == null || arr.Count == 0)
+                    break;
+
+                SafeDebugLog("GetDocumentsAsync: page=" + page + " docsFromDiadoc=" + arr.Count);
+
+                string lastIndexKey = null;
+
+                foreach (var d in arr)
+                {
+                // Логируем тип документа и метаданные, чтобы разбираться с нестандартными УПД (например, по конкретному ИНН).
                 string typeNamedId = null;
                 try
                 {
@@ -425,11 +478,54 @@ namespace RoomBroomChainPlugin.Diadoc
                                  " json=" + d.ToString(Newtonsoft.Json.Formatting.None));
                 }
 
-                if (!string.IsNullOrWhiteSpace(typeNamedId) &&
-                    !string.Equals(typeNamedId, "UniversalTransferDocument", StringComparison.OrdinalIgnoreCase))
+                string sellerInnMeta = null;
+                var metaForInn = d["Metadata"] as JArray;
+                if (metaForInn != null)
                 {
-                    // Берём только УПД, остальные документы в список не попадают.
+                    foreach (var m in metaForInn)
+                    {
+                        var k = (string)m["Key"];
+                        var v = (string)m["Value"];
+                        if (k == "SellerInn")
+                        {
+                            sellerInnMeta = v;
+                            break;
+                        }
+                    }
+                }
+
+                SafeDebugLog("GetDocumentsAsync: doc=" + ((string)d["DocumentNumber"] ?? "<no-number>")
+                             + " date=" + ((string)d["DocumentDate"] ?? "")
+                             + " typeNamedId=" + (typeNamedId ?? "<null>")
+                             + " SellerInn=" + (sellerInnMeta ?? "<null>"));
+
+                // Фильтр "только УПД": оставляем документы семейства UniversalTransferDocument/UniversalCorrectionDocument
+                // и, на всякий случай, XmlTorg12. Остальные (Nonformalized, ReconciliationAct, ProformaInvoice, Invoice и т.д.)
+                // в грид "Входящие" не попадают.
+                bool isUpd = false;
+                var tId = typeNamedId ?? "";
+                if (tId.IndexOf("UniversalTransferDocument", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    tId.IndexOf("UniversalCorrectionDocument", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    string.Equals(tId, "XmlTorg12", StringComparison.OrdinalIgnoreCase))
+                {
+                    isUpd = true;
+                }
+                else
+                {
+                    var title = ((string)d["Title"] ?? "").ToUpperInvariant();
+                    if (title.Contains("УПД"))
+                        isUpd = true;
+                }
+
+                if (!isUpd)
                     continue;
+
+                // Отдельный маркер для диагностики поставщика Арсенал (ИНН 5048029448).
+                if (string.Equals(sellerInnMeta, "5048029448", StringComparison.OrdinalIgnoreCase))
+                {
+                    SafeDebugLog("GetDocumentsAsync: *** Arsenal doc detected (SellerInn=5048029448) "
+                                 + "number=" + ((string)d["DocumentNumber"] ?? "<no-number>")
+                                 + " typeNamedId=" + (typeNamedId ?? "<null>"));
                 }
 
                 var meta = d["Metadata"] as JArray;
@@ -468,15 +564,7 @@ namespace RoomBroomChainPlugin.Diadoc
                     senderName = (string)d["Title"] ?? "";
 
                 var creationTs = (string)d["CreationTimestamp"];
-                string sentToEdo = "";
-                if (!string.IsNullOrEmpty(creationTs))
-                {
-                    if (DateTime.TryParse(creationTs, null,
-                        System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
-                        sentToEdo = dt.ToLocalTime().ToString("dd.MM.yyyy");
-                    else
-                        sentToEdo = creationTs;
-                }
+                var sentToEdo = NormalizeDisplayDate(creationTs);
 
                 list.Add(new DiadocDocumentRow
                 {
@@ -492,6 +580,13 @@ namespace RoomBroomChainPlugin.Diadoc
                     TotalVat = totalVat,
                     StatusText = statusText
                 });
+                    // Для следующей страницы пагинации.
+                    lastIndexKey = (string)d["IndexKey"] ?? lastIndexKey;
+                }
+
+                if (string.IsNullOrEmpty(lastIndexKey))
+                    break;
+                afterIndexKey = lastIndexKey;
             }
             return list;
         }
