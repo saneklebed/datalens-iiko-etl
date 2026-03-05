@@ -219,9 +219,9 @@ namespace Pages
                     if (r != DialogResult.Yes)
                         return;
                 }
-                await UploadToIikoAsync(true);
+                await SignAndUploadAsync();
             };
-            _btnReject.Click += (s, e) =>
+            _btnReject.Click += async (s, e) =>
             {
                 var cfg = ConfigStore.Load();
                 if (cfg != null && cfg.ConfirmSignOrReject)
@@ -232,8 +232,7 @@ namespace Pages
                         return;
                 }
 
-                XtraMessageBox.Show("Отказ в подписи будет реализован в следующей версии.", "ЭДО ↔ iiko",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                await RejectInDiadocAsync();
             };
             _btnRefreshMappings.Click += async (s, e) => await RefreshMappingsAsync();
 
@@ -711,9 +710,23 @@ namespace Pages
 
         private void UpdateUploadButtonsEnabled()
         {
-            var enabled = _currentAllItemsMapped && _currentItems != null && _currentItems.Length > 0;
+            var docFinalized = IsDocumentFinalized();
+            var enabled = !docFinalized && _currentAllItemsMapped && _currentItems != null && _currentItems.Length > 0;
             _btnUploadOnly.Enabled = enabled;
             _btnSignAndUpload.Enabled = enabled;
+            _btnReject.Enabled = !docFinalized;
+        }
+
+        private bool IsDocumentFinalized()
+        {
+            if (_currentDocument == null) return false;
+            var s = (_currentDocument.StatusText ?? "").Trim();
+            if (string.IsNullOrEmpty(s)) return false;
+            // Диадок возвращает, например: "Подписан", "Подписан получателем", "Отказ в подписи", "Отклонён" и т.п.
+            if (s.IndexOf("подписан", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (s.IndexOf("отказ", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (s.IndexOf("отклон", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            return false;
         }
 
         /// <summary>
@@ -984,12 +997,6 @@ namespace Pages
 
                 XtraMessageBox.Show(msg, "Выгрузка в iiko", MessageBoxButtons.OK,
                     valid ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
-
-                if (withSign && valid)
-                {
-                    XtraMessageBox.Show("Подпись и квитанция Диадока будут реализованы в следующей версии.",
-                        "Подписать и выгрузить", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
             }
             catch (IikoImportException ie)
             {
@@ -1023,6 +1030,95 @@ namespace Pages
             catch (Exception ex)
             {
                 XtraMessageBox.Show(ex.Message, "Выгрузка в iiko", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>
+        /// Комбинированная кнопка: сначала выгрузка в iiko, затем подпись входящего документа в Диадоке.
+        /// </summary>
+        private async Task SignAndUploadAsync()
+        {
+            if (_currentMode != ModeIncomingDetails || _client == null || _iikoClient == null)
+                return;
+
+            // Сначала стандартная выгрузка в iiko с проведением (withSign = true учитывает галочку "С проведением").
+            await UploadToIikoAsync(true).ConfigureAwait(true);
+
+            if (_currentDocument == null)
+                return;
+
+            var boxId = GetSelectedBoxId();
+            if (string.IsNullOrEmpty(boxId) ||
+                string.IsNullOrEmpty(_currentDocument.MessageId) ||
+                string.IsNullOrEmpty(_currentDocument.EntityId))
+                return;
+
+            try
+            {
+                await _client.SignIncomingDocumentAsync(boxId, _currentDocument.MessageId, _currentDocument.EntityId)
+                    .ConfigureAwait(true);
+
+                _currentDocument.StatusText = "Подписан";
+                UpdateUploadButtonsEnabled();
+
+                XtraMessageBox.Show("Документ в Диадоке подписан.", "ЭДО ↔ iiko",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                XtraMessageBox.Show("Ошибка при подписи документа в Диадоке:\r\n" + ex.Message,
+                    "ЭДО ↔ iiko", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        /// <summary>
+        /// Кнопка "Отказать" — отправка в Диадок отказа в подписи для текущего УПД.
+        /// </summary>
+        private async Task RejectInDiadocAsync()
+        {
+            if (_currentMode != ModeIncomingDetails || _client == null)
+                return;
+            if (_currentDocument == null)
+                return;
+
+            var boxId = GetSelectedBoxId();
+            if (string.IsNullOrEmpty(boxId) ||
+                string.IsNullOrEmpty(_currentDocument.MessageId) ||
+                string.IsNullOrEmpty(_currentDocument.EntityId))
+                return;
+
+            string reason = "Отказ в подписании документа.";
+            try
+            {
+                var input = XtraInputBox.Show(
+                    "Укажи причину отказа в подписи (она уйдёт в Диадок).",
+                    "Причина отказа",
+                    "Не согласен с содержимым документа.");
+                if (input == null)
+                    return;
+                if (!string.IsNullOrWhiteSpace(input))
+                    reason = input.Trim();
+            }
+            catch
+            {
+                // Если по какой-то причине диалог не открылся, используем дефолтную причину.
+            }
+
+            try
+            {
+                await _client.RejectIncomingDocumentAsync(boxId, _currentDocument.MessageId, _currentDocument.EntityId, reason)
+                    .ConfigureAwait(true);
+
+                _currentDocument.StatusText = "Отказ в подписи";
+                UpdateUploadButtonsEnabled();
+
+                XtraMessageBox.Show("Отказ в подписи отправлен в Диадок.", "ЭДО ↔ iiko",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                XtraMessageBox.Show("Ошибка при отправке отказа в Диадок:\r\n" + ex.Message,
+                    "ЭДО ↔ iiko", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 

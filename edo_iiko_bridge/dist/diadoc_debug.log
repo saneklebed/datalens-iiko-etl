@@ -1007,3 +1007,7 @@
 2026-03-05T12:11:42 GetDocumentsAsync: page=1 docsFromDiadoc=2
 2026-03-05T12:11:42 GetDocumentsAsync: doc=Г0000818316 date=24.02.2026 typeNamedId=ProformaInvoice SellerInn=<null>
 2026-03-05T12:11:42 GetDocumentsAsync: doc=0111642534-0358 date=23.02.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T12:15:35 GetUtdItemsAsync: start
+2026-03-05T12:15:35 GetUtdItemsAsync: saved utd_last.xml to C:\Users\Orange\AppData\Local\RoomBroomChainPlugin\utd_last.xml
+2026-03-05T12:15:35 GetUtdItemsAsync: using ФНС ТаблСчФакт/СведТов format
+2026-03-05T12:15:35 GetUtdItemsAsync: parsed rows count=34

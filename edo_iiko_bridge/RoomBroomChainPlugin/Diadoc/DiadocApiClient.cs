@@ -5,6 +5,11 @@ using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 using System.Globalization;
+using System.Security;
+using System.Security.Cryptography;
+using System.Security.Cryptography.Pkcs;
+using System.Security.Cryptography.X509Certificates;
+using System.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using RoomBroomChainPlugin.Config;
@@ -21,8 +26,7 @@ namespace RoomBroomChainPlugin.Diadoc
         private readonly RoomBroomConfig _config;
         private string _token;
         // Временный лог для диагностики парсинга УПД на dev-машине.
-        private const string DebugLogPath =
-            @"C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\dist\diadoc_debug.log";
+        private static readonly string DebugLogPath = InitDebugLogPath();
 
         public DiadocApiClient(RoomBroomConfig config)
         {
@@ -112,6 +116,31 @@ namespace RoomBroomChainPlugin.Diadoc
             return NormalizeToken(s);
         }
 
+        private static string InitDebugLogPath()
+        {
+            try
+            {
+                // Пытаемся писать лог рядом с DLL плагина (в папку Plugins на боевом сервере).
+                var asmLocation = typeof(DiadocApiClient).Assembly.Location;
+                var dir = Path.GetDirectoryName(asmLocation);
+                if (string.IsNullOrEmpty(dir))
+                    dir = AppDomain.CurrentDomain.BaseDirectory;
+                if (string.IsNullOrEmpty(dir))
+                    dir = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "RoomBroomChainPlugin");
+                Directory.CreateDirectory(dir);
+                return Path.Combine(dir, "diadoc_debug.log");
+            }
+            catch
+            {
+                // Фолбэк — временная папка.
+                var fallbackDir = Path.Combine(Path.GetTempPath(), "RoomBroomChainPlugin");
+                try { Directory.CreateDirectory(fallbackDir); } catch { }
+                return Path.Combine(fallbackDir, "diadoc_debug.log");
+            }
+        }
+
         private static void LogRequest(string method, string url)
         {
             try
@@ -182,6 +211,57 @@ namespace RoomBroomChainPlugin.Diadoc
             }
         }
 
+        /// <summary>
+        /// Вариант PerformRequestAsync, возвращающий сырые байты (без перекодировки в строку).
+        /// Нужен для GenerateTitleXml, который отдаёт XML в windows-1251.
+        /// </summary>
+        private async Task<byte[]> PerformRequestBytesAsync(
+            string method,
+            string pathAndQuery,
+            string authHeaderValue,
+            byte[] body = null,
+            string bodyContentType = null)
+        {
+            var url = BuildUrl(pathAndQuery);
+            LogRequest(method, url);
+
+            var request = (HttpWebRequest)WebRequest.Create(url);
+            request.Method = method;
+            request.AllowAutoRedirect = true;
+            request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
+            request.Timeout = 60000;
+
+            if (!string.IsNullOrEmpty(authHeaderValue))
+                request.Headers.Add("Authorization", authHeaderValue);
+
+            if (body != null && body.Length > 0)
+            {
+                request.ContentType = bodyContentType ?? "application/json; charset=utf-8";
+                request.ContentLength = body.Length;
+                using (var stream = request.GetRequestStream())
+                    stream.Write(body, 0, body.Length);
+            }
+            else
+            {
+                request.ContentLength = 0;
+            }
+
+            try
+            {
+                using (var response = (HttpWebResponse)await request.GetResponseAsync().ConfigureAwait(false))
+                using (var stream = response.GetResponseStream())
+                using (var ms = new MemoryStream())
+                {
+                    await stream.CopyToAsync(ms).ConfigureAwait(false);
+                    return ms.ToArray();
+                }
+            }
+            catch (WebException we)
+            {
+                throw WrapWebException(we, pathAndQuery);
+            }
+        }
+
         private static InvalidOperationException WrapWebException(WebException we, string pathAndQuery)
         {
             var httpResp = we.Response as HttpWebResponse;
@@ -210,6 +290,11 @@ namespace RoomBroomChainPlugin.Diadoc
                             ? httpResp.StatusDescription ?? code.ToString()
                             : body;
                 }
+
+                // Пишем в диагностический лог подробности HTTP-ошибки Диадока.
+                SafeDebugLog(
+                    $"HttpError: status={(int)httpResp.StatusCode} path={pathAndQuery} message={message} body={body}");
+
                 return new InvalidOperationException(
                     $"[{(int)httpResp.StatusCode} {pathAndQuery}] {message}", we);
             }
@@ -233,6 +318,229 @@ namespace RoomBroomChainPlugin.Diadoc
             {
                 // Лог не должен ломать работу плагина.
             }
+        }
+
+        #endregion
+
+        #region Signing helpers
+
+        private List<DiadocOrg> _cachedOrgs;
+
+        /// <summary>
+        /// Для SignerContent нужен GUID организации (OrgId), а с UI в подпись приходит boxId.
+        /// Разрешаем OrgId по BoxId через GetMyOrganizations (с простым кэшем).
+        /// </summary>
+        private async Task<string> ResolveOrgGuidForSignerAsync(string boxId)
+        {
+            var cleanBoxId = StripBoxIdDomain(boxId?.Trim() ?? "");
+            if (string.IsNullOrEmpty(cleanBoxId))
+                return boxId;
+
+            try
+            {
+                if (_cachedOrgs == null || _cachedOrgs.Count == 0)
+                {
+                    var orgs = await GetMyOrganizationsAsync().ConfigureAwait(false);
+                    _cachedOrgs = orgs ?? new List<DiadocOrg>();
+                }
+
+                var match = _cachedOrgs.FirstOrDefault(o =>
+                    string.Equals(StripBoxIdDomain(o.BoxId ?? ""), cleanBoxId, StringComparison.OrdinalIgnoreCase));
+
+                if (match != null && !string.IsNullOrWhiteSpace(match.OrgId) &&
+                    Guid.TryParse(match.OrgId, out var g))
+                {
+                    return g.ToString("D");
+                }
+            }
+            catch
+            {
+                // Не удалось получить OrgId — вернём исходное значение, чтобы не ломать подпись полностью.
+            }
+
+            return cleanBoxId;
+        }
+
+        private static X509Certificate2 GetBestCertificateForSigning()
+        {
+            var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
+            store.Open(OpenFlags.ReadOnly | OpenFlags.OpenExistingOnly);
+            try
+            {
+                var now = DateTime.Now;
+                var candidates = store.Certificates
+                    .Find(X509FindType.FindByTimeValid, now, false)
+                    .Find(X509FindType.FindByKeyUsage, X509KeyUsageFlags.DigitalSignature, false)
+                    .Cast<X509Certificate2>()
+                    .Where(c => c.HasPrivateKey)
+                    .ToList();
+
+                if (candidates.Count == 0)
+                    throw new InvalidOperationException("В хранилище пользователя нет подходящих сертификатов для подписи (действующий, с правом DigitalSignature и закрытым ключом).");
+
+                // Сначала пробуем выбрать сертификат, выданный ФНС (как в интерфейсе Диадока),
+                // чтобы использовать его для подписания УПД/УКД.
+                var fnsCandidates = candidates
+                    .Where(c => (c.Issuer ?? "").IndexOf("Федеральная налоговая служба", StringComparison.OrdinalIgnoreCase) >= 0)
+                    .ToList();
+
+                List<X509Certificate2> pool = fnsCandidates.Count > 0 ? fnsCandidates : candidates;
+
+                // В выбранном пуле берём самый новый сертификат по дате окончания действия (NotAfter).
+                var cert = pool
+                    .OrderByDescending(c => c.NotAfter)
+                    .First();
+
+                if (!cert.HasPrivateKey)
+                    throw new InvalidOperationException("У выбранного сертификата отсутствует закрытый ключ.");
+
+                return cert;
+            }
+            finally
+            {
+                store.Close();
+            }
+        }
+
+        /// <summary>
+        /// Генерация титула покупателя для входящего УПД через актуальный метод GenerateTitleXml.
+        /// Возвращает готовый XML титула покупателя (байты UTF-8).
+        /// </summary>
+        private async Task<byte[]> GenerateBuyerTitleXmlAsync(string boxId, string messageId, string entityId)
+        {
+            if (string.IsNullOrWhiteSpace(boxId))
+                throw new ArgumentException(nameof(boxId));
+            if (string.IsNullOrWhiteSpace(messageId))
+                throw new ArgumentException(nameof(messageId));
+            if (string.IsNullOrWhiteSpace(entityId))
+                throw new ArgumentException(nameof(entityId));
+
+            var cleanBoxId = StripBoxIdDomain(boxId.Trim());
+
+            // Для SignerContent нам нужен GUID организации (OrgId) и thumbprint сертификата.
+            var orgGuid = await ResolveOrgGuidForSignerAsync(boxId).ConfigureAwait(false);
+            var cert = GetBestCertificateForSigning();
+            var thumb = (cert.Thumbprint ?? "").Replace(" ", "").ToUpperInvariant();
+
+            // Минимальный упрощённый XML UserDataXsd для титула покупателя.
+            // Формат строго по реальному титулу покупателя: ContentOperCode → Signers.
+            var acceptanceDate = DateTime.Now.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
+            var sb = new StringBuilder();
+            sb.Append("<?xml version=\"1.0\" encoding=\"utf-8\"?>");
+            sb.Append("<UniversalTransferDocumentBuyerTitle ");
+            sb.Append("DocumentCreator=\"ИП СМИРНОВ АНТОН ВЛАДИМИРОВИЧ\" ");
+            sb.Append("OperationContent=\"Товары приняты\" ");
+            sb.Append("AcceptanceDate=\"").Append(SecurityElement.Escape(acceptanceDate)).Append("\">");
+            sb.Append("<ContentOperCode TotalCode=\"1\" />");
+            sb.Append("<Signers BoxId=\"").Append(SecurityElement.Escape(orgGuid)).Append("\">");
+            sb.Append("<Signer SignerPowersConfirmationMethod=\"1\">");
+            sb.Append("<Certificate CertificateThumbprint=\"").Append(thumb).Append("\" />");
+            sb.Append("</Signer>");
+            sb.Append("</Signers>");
+            sb.Append("</UniversalTransferDocumentBuyerTitle>");
+            var bodyXml = sb.ToString();
+            var bodyBytes = Encoding.UTF8.GetBytes(bodyXml);
+
+            // titleIndex=1 — титул покупателя; letterId/documentId — исходный УПД (титул продавца).
+            var pq = new StringBuilder("GenerateTitleXml");
+            pq.Append("?boxId=").Append(Uri.EscapeDataString(cleanBoxId));
+            pq.Append("&documentTypeNamedId=").Append(Uri.EscapeDataString("UniversalTransferDocument"));
+            pq.Append("&documentFunction=").Append(Uri.EscapeDataString("СЧФДОП"));
+            pq.Append("&documentVersion=").Append(Uri.EscapeDataString("utd970_05_03_01"));
+            pq.Append("&titleIndex=1");
+            pq.Append("&letterId=").Append(Uri.EscapeDataString(messageId));
+            pq.Append("&documentId=").Append(Uri.EscapeDataString(entityId));
+
+            SafeDebugLog("GenerateBuyerTitleXmlAsync: requestXml=" + bodyXml);
+
+            var resultBytes = await PerformRequestBytesAsync(
+                "POST",
+                pq.ToString(),
+                AuthHeader(),
+                bodyBytes,
+                "application/xml; charset=utf-8"
+            ).ConfigureAwait(false);
+
+            SafeDebugLog("GenerateBuyerTitleXmlAsync: response bytes length=" + (resultBytes?.Length ?? 0));
+
+            // Сохраним XML ответа для диагностики (Диадок отдаёт windows-1251).
+            try
+            {
+                var enc1251 = Encoding.GetEncoding(1251);
+                SafeDebugLog("GenerateBuyerTitleXmlAsync: responseXml=" + enc1251.GetString(resultBytes ?? new byte[0]));
+            }
+            catch { }
+
+            return resultBytes ?? new byte[0];
+        }
+
+        private static string BuildSignerContentXml(string orgGuidOrBoxId, X509Certificate2 cert)
+        {
+            if (string.IsNullOrWhiteSpace(orgGuidOrBoxId))
+                throw new ArgumentException("orgGuidOrBoxId");
+            if (cert == null)
+                throw new ArgumentNullException(nameof(cert));
+
+            var thumb = (cert.Thumbprint ?? "").Replace(" ", "").ToUpperInvariant();
+            if (string.IsNullOrWhiteSpace(thumb))
+                throw new InvalidOperationException("Не удалось получить отпечаток сертификата для SignerContent.");
+
+            // BoxId в XSD описан как guid, поэтому используем GUID организации (OrgId).
+            // Если приходит «сплошной» идентификатор без дефисов, пробуем привести его к формату GUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).
+            var boxForXml = orgGuidOrBoxId;
+            if (!Guid.TryParse(boxForXml, out _))
+            {
+                if (boxForXml.Length == 32 && Guid.TryParseExact(boxForXml, "N", out var g))
+                    boxForXml = g.ToString("D");
+            }
+
+            // Упрощённый XML-подписант по универсальному формату (пример из доки Диадока).
+            // BoxId — GUID организации (OrgId), CertificateThumbprint — отпечаток используемого сертификата.
+            var sb = new StringBuilder();
+            sb.Append("<?xml version=\"1.0\" encoding=\"utf-8\"?>");
+            sb.Append("<Signers BoxId=\"").Append(SecurityElement.Escape(boxForXml)).Append("\">");
+            // Для формата УПД требуется указать способ подтверждения полномочий.
+            // Используем значение "1" — «в соответствии с данными, содержащимися в электронной подписи».
+            sb.Append("<Signer SignerPowersConfirmationMethod=\"1\">");
+            sb.Append("<Certificate CertificateThumbprint=\"").Append(thumb).Append("\" />");
+            sb.Append("</Signer></Signers>");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Упрощённый XML подписанта для служебных документов (receipt, rejection, correction request).
+        /// Формат: TechnologicalSigner133UserContract1505.xsd — корневой элемент <Signer>, не <Signers>.
+        /// </summary>
+        private static string BuildServiceSignerContentXml(X509Certificate2 cert)
+        {
+            if (cert == null)
+                throw new ArgumentNullException(nameof(cert));
+
+            var certBase64 = Convert.ToBase64String(cert.RawData);
+
+            var sb = new StringBuilder();
+            sb.Append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+            sb.Append("<Signer SignerStatus=\"1\" SignatureType=\"1\">");
+            sb.Append("<Certificate CertificateBytes=\"").Append(certBase64).Append("\" />");
+            sb.Append("</Signer>");
+            return sb.ToString();
+        }
+
+        private static byte[] SignContentWithUserCertificate(byte[] content, string purposeForUser)
+        {
+            if (content == null || content.Length == 0)
+                throw new ArgumentException("Нет данных для подписи.", nameof(content));
+
+            var cert = GetBestCertificateForSigning();
+
+            var contentInfo = new ContentInfo(content);
+            var cms = new SignedCms(contentInfo, detached: true);
+            var signer = new CmsSigner(SubjectIdentifierType.IssuerAndSerialNumber, cert)
+            {
+                IncludeOption = X509IncludeOption.EndCertOnly
+            };
+            cms.ComputeSignature(signer, false);
+            return cms.Encode();
         }
 
         #endregion
@@ -265,6 +573,222 @@ namespace RoomBroomChainPlugin.Diadoc
             if (string.IsNullOrEmpty(_token))
                 throw new InvalidOperationException("Диадок вернул пустой токен.");
             return _token;
+        }
+
+        /// <summary>
+        /// POST /PrepareDocumentsToSign — подготовка входящего документа к подписи.
+        /// Возвращает PatchedContentId и байты контента, которые нужно подписать CMS-подписью.
+        /// </summary>
+        public async Task<(string patchedContentId, byte[] contentToSign)> PrepareIncomingDocumentToSignAsync(
+            string boxId, string messageId, string entityId)
+        {
+            if (string.IsNullOrWhiteSpace(boxId))
+                throw new ArgumentException(nameof(boxId));
+            if (string.IsNullOrWhiteSpace(messageId))
+                throw new ArgumentException(nameof(messageId));
+            if (string.IsNullOrWhiteSpace(entityId))
+                throw new ArgumentException(nameof(entityId));
+
+            SafeDebugLog($"PrepareIncomingDocumentToSignAsync: boxId={boxId} messageId={messageId} entityId={entityId}");
+
+            // Для SignerContent переводим boxId → OrgId (GUID организации), как того требует XSD подписанта.
+            var orgGuid = await ResolveOrgGuidForSignerAsync(boxId).ConfigureAwait(false);
+
+            var cert = GetBestCertificateForSigning();
+            SafeDebugLog(
+                $"PrepareIncomingDocumentToSignAsync: using cert Subject={cert.Subject}, Issuer={cert.Issuer}, NotAfter={cert.NotAfter:yyyy-MM-dd}, orgGuid={orgGuid}");
+
+            var signerXml = BuildSignerContentXml(orgGuid, cert);
+            var signerBytes = Encoding.UTF8.GetBytes(signerXml);
+
+            var body = new
+            {
+                BoxId = boxId,
+                Documents = new[]
+                {
+                    new
+                    {
+                        DocumentId = new
+                        {
+                            MessageId = messageId,
+                            EntityId = entityId
+                        },
+                        SignerContent = signerBytes
+                    }
+                }
+            };
+
+            var json = JsonConvert.SerializeObject(body);
+            var bytes = Encoding.UTF8.GetBytes(json);
+
+            // В официальной доке метод без версии; используем "PrepareDocumentsToSign".
+            var raw = await PerformRequestAsync(
+                "POST",
+                "PrepareDocumentsToSign",
+                AuthHeader(),
+                bytes,
+                "application/json; charset=utf-8"
+            ).ConfigureAwait(false);
+
+            var root = JObject.Parse(raw);
+            var arr = root["DocumentPatchedContents"] as JArray;
+            if (arr == null || arr.Count == 0)
+                throw new InvalidOperationException("Диадок не вернул DocumentPatchedContents для подготовки к подписи.");
+
+            var first = (JObject)arr[0];
+            var patchedId = (string)first["PatchedContentId"];
+            var contentBase64 = (string)first["Content"];
+            if (string.IsNullOrEmpty(patchedId))
+                throw new InvalidOperationException("Диадок вернул пустой PatchedContentId.");
+            byte[] contentBytes = Array.Empty<byte>();
+            if (!string.IsNullOrEmpty(contentBase64))
+                contentBytes = Convert.FromBase64String(contentBase64);
+
+            SafeDebugLog(
+                $"PrepareIncomingDocumentToSignAsync: patchedContentId={patchedId}, contentLength={contentBytes.Length}");
+
+            return (patchedId, contentBytes);
+        }
+
+        /// <summary>
+        /// Подписать входящий документ:
+        /// 1) GenerateTitleXml → XML титула покупателя (UniversalTransferDocumentBuyerTitle)
+        /// 2) CMS-подпись этого XML
+        /// 3) PostMessagePatch с RecipientTitles.
+        /// </summary>
+        public async Task SignIncomingDocumentAsync(string boxId, string messageId, string entityId)
+        {
+            SafeDebugLog($"SignIncomingDocumentAsync: start boxId={boxId} messageId={messageId} entityId={entityId}");
+
+            // Генерируем корректный титул покупателя под конкретный входящий УПД.
+            var buyerTitleXml = await GenerateBuyerTitleXmlAsync(boxId, messageId, entityId).ConfigureAwait(false);
+            if (buyerTitleXml == null || buyerTitleXml.Length == 0)
+                throw new InvalidOperationException("Диадок не вернул XML титула покупателя для подписи.");
+
+            var signature = SignContentWithUserCertificate(
+                buyerTitleXml,
+                "Выберите сертификат для подписи входящего УПД в Диадоке.");
+
+            SafeDebugLog($"SignIncomingDocumentAsync: contentLength={buyerTitleXml.Length}, signatureLength={signature.Length}");
+
+            // Отправляем титул покупателя как RecipientTitle.
+            var patch = new
+            {
+                BoxId = boxId,
+                MessageId = messageId,
+                RecipientTitles = new[]
+                {
+                    new
+                    {
+                        ParentEntityId = entityId,
+                        SignedContent = new
+                        {
+                            Content = buyerTitleXml,
+                            Signature = signature
+                        },
+                        NeedReceipt = false
+                    }
+                }
+            };
+
+            var json = JsonConvert.SerializeObject(patch);
+            var bytes = Encoding.UTF8.GetBytes(json);
+
+            var resp = await PerformRequestAsync(
+                "POST",
+                "V4/PostMessagePatch",
+                AuthHeader(),
+                bytes,
+                "application/json; charset=utf-8"
+            ).ConfigureAwait(false);
+
+            SafeDebugLog("SignIncomingDocumentAsync: PostMessagePatch response=" + resp);
+        }
+
+        /// <summary>
+        /// Отказ от подписи входящего документа:
+        /// 1) GenerateSignatureRejectionXml (V2) — генерация XML отказа на стороне Диадока.
+        /// 2) Подписываем полученный XML сертификатом.
+        /// 3) PostMessagePatch с XmlSignatureRejections.
+        /// </summary>
+        public async Task RejectIncomingDocumentAsync(string boxId, string messageId, string entityId, string reason)
+        {
+            if (string.IsNullOrWhiteSpace(reason))
+                reason = "Отказ в подписании документа.";
+
+            SafeDebugLog($"RejectIncomingDocumentAsync: start boxId={boxId} messageId={messageId} entityId={entityId} reason={reason}");
+
+            var cleanBoxId = StripBoxIdDomain(boxId.Trim());
+            var cert = GetBestCertificateForSigning();
+            var signerXml = BuildServiceSignerContentXml(cert);
+            var signerBytes = Encoding.UTF8.GetBytes(signerXml);
+
+            SafeDebugLog("RejectIncomingDocumentAsync: signerXml length=" + signerXml.Length);
+
+            // 1) Генерируем XML отказа через Diadoc API.
+            var genRequest = new
+            {
+                ErrorMessage = reason,
+                MessageId = messageId,
+                AttachmentId = entityId,
+                SignerContent = signerBytes
+            };
+            var genJson = JsonConvert.SerializeObject(genRequest);
+            var genBody = Encoding.UTF8.GetBytes(genJson);
+
+            SafeDebugLog("RejectIncomingDocumentAsync: calling V2/GenerateSignatureRejectionXml");
+
+            var rejectionXml = await PerformRequestBytesAsync(
+                "POST",
+                "V2/GenerateSignatureRejectionXml?boxId=" + Uri.EscapeDataString(cleanBoxId),
+                AuthHeader(),
+                genBody,
+                "application/json; charset=utf-8"
+            ).ConfigureAwait(false);
+
+            SafeDebugLog("RejectIncomingDocumentAsync: rejection XML bytes=" + (rejectionXml?.Length ?? 0));
+
+            if (rejectionXml == null || rejectionXml.Length == 0)
+                throw new InvalidOperationException("Диадок не вернул XML отказа от подписи.");
+
+            // 2) Подписываем XML отказа сертификатом.
+            var signature = SignContentWithUserCertificate(
+                rejectionXml,
+                "Выберите сертификат для отказа в подписи документа в Диадоке.");
+
+            SafeDebugLog($"RejectIncomingDocumentAsync: contentLength={rejectionXml.Length}, signatureLength={signature.Length}");
+
+            // 3) Отправляем через PostMessagePatch.
+            var patch = new
+            {
+                BoxId = boxId,
+                MessageId = messageId,
+                XmlSignatureRejections = new[]
+                {
+                    new
+                    {
+                        ParentEntityId = entityId,
+                        SignedContent = new
+                        {
+                            Content = rejectionXml,
+                            Signature = signature
+                        }
+                    }
+                }
+            };
+
+            var json = JsonConvert.SerializeObject(patch);
+            var bytes = Encoding.UTF8.GetBytes(json);
+
+            var resp = await PerformRequestAsync(
+                "POST",
+                "V4/PostMessagePatch",
+                AuthHeader(),
+                bytes,
+                "application/json; charset=utf-8"
+            ).ConfigureAwait(false);
+
+            SafeDebugLog("RejectIncomingDocumentAsync: PostMessagePatch response=" + resp);
         }
 
         /// <summary>
