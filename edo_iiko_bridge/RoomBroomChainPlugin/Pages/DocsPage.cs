@@ -33,6 +33,13 @@ namespace Pages
         private SimpleButton _btnFetchInvoices;
         private GridControl _grid;
         private GridView _gridView;
+        private PanelControl _batchActionsPanel;
+        private SimpleButton _btnBatchSignAndUpload;
+        private SimpleButton _btnBatchUpload;
+        private SimpleButton _btnBatchReject;
+        private LabelControl _lblBatchHint;
+        private ComboBoxEdit _batchStoreCombo;
+        private LabelControl _lblBatchStore;
 
         private PanelControl _detailsPanel;
         private LabelControl _detailsHeader;
@@ -146,13 +153,48 @@ namespace Pages
             _gridView.Columns.AddField("Organization").Caption = "Организация";
             _gridView.Columns.AddField("Inn").Caption = "ИНН";
             _gridView.Columns.AddField("Kpp").Caption = "КПП";
-            _gridView.OptionsBehavior.Editable = false;
+            _gridView.OptionsBehavior.Editable = true;
             _gridView.OptionsView.ShowGroupPanel = false;
             // Включаем панель поиска (лупа в правом верхнем углу грида).
             _gridView.OptionsFind.AlwaysVisible = true;
             _gridView.OptionsFind.ShowCloseButton = true;
             _gridView.OptionsFind.FindNullPrompt = "Введите текст для поиска (номер УПД, сумма и т.д.)";
             _gridView.DoubleClick += GridView_DoubleClick;
+            _gridView.CellValueChanged += GridView_CellValueChanged;
+
+            // Панель массовых действий по выбранным накладным (появляется при выборе в списке «Входящие»)
+            _batchActionsPanel = new PanelControl
+            {
+                Dock = DockStyle.Top,
+                Height = 52,
+                Padding = new Padding(8, 4, 8, 4),
+                Visible = false,
+                BorderStyle = BorderStyles.NoBorder
+            };
+            _btnBatchSignAndUpload = new SimpleButton { Text = "Подписать и выгрузить", Width = 190 };
+            _btnBatchUpload = new SimpleButton { Text = "Выгрузить", Width = 120 };
+            _btnBatchReject = new SimpleButton { Text = "Отказать", Width = 100 };
+            _lblBatchHint = new LabelControl
+            {
+                AutoSizeMode = LabelAutoSizeMode.None,
+                Padding = new Padding(8, 0, 0, 0),
+                Appearance = { ForeColor = Color.DarkOrange },
+                Text = "",
+                MaximumSize = new Size(600, 0)
+            };
+            _lblBatchStore = new LabelControl { Text = "Склад:", AutoSizeMode = LabelAutoSizeMode.None, Width = 40 };
+            _batchStoreCombo = new ComboBoxEdit { Width = 220 };
+            var batchFlow = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight, WrapContents = true };
+            batchFlow.Controls.Add(_btnBatchSignAndUpload);
+            batchFlow.Controls.Add(_btnBatchUpload);
+            batchFlow.Controls.Add(_btnBatchReject);
+            batchFlow.Controls.Add(_lblBatchStore);
+            batchFlow.Controls.Add(_batchStoreCombo);
+            batchFlow.Controls.Add(_lblBatchHint);
+            _batchActionsPanel.Controls.Add(batchFlow);
+            _btnBatchSignAndUpload.Click += async (s, e) => await BatchSignAndUploadAsync();
+            _btnBatchUpload.Click += async (s, e) => await BatchUploadAsync();
+            _btnBatchReject.Click += async (s, e) => await BatchRejectAsync();
 
             // Панель деталей входящей накладной (второй «экран» внутри документов).
             _detailsPanel = new PanelControl
@@ -178,6 +220,8 @@ namespace Pages
             };
             _btnBack.Click += (s, e) =>
             {
+                if (_currentDocument != null)
+                    _currentDocument.AllItemsMapped = _currentAllItemsMapped;
                 SetMode(ModeIncoming);
                 RefreshIncomingDocumentsAsync();
             };
@@ -313,6 +357,7 @@ namespace Pages
 
             Controls.Add(_detailsPanel);
             Controls.Add(_grid);
+            Controls.Add(_batchActionsPanel);
             Controls.Add(_backPanel);
             Controls.Add(_filterPanel);
             Controls.Add(_buttonsPanel);
@@ -399,55 +444,85 @@ namespace Pages
             var cols = _gridView.Columns;
             if (cols["MessageId"] != null) cols["MessageId"].Visible = false;
             if (cols["EntityId"] != null) cols["EntityId"].Visible = false;
-            if (cols["CounterpartyName"] != null) { cols["CounterpartyName"].Caption = "Отправитель"; cols["CounterpartyName"].VisibleIndex = 0; }
-            if (cols["CounterpartyInn"] != null) { cols["CounterpartyInn"].Caption = "ИНН"; cols["CounterpartyInn"].VisibleIndex = 1; }
+
+            // Самый левый столбец — выбор накладных для массовых действий (чекбокс)
+            if (cols["Selected"] != null)
+            {
+                cols["Selected"].Caption = "Выбрать накладную";
+                cols["Selected"].VisibleIndex = 0;
+                cols["Selected"].Width = 36;
+                var repoCheck = new DevExpress.XtraEditors.Repository.RepositoryItemCheckEdit();
+                _gridView.GridControl.RepositoryItems.Add(repoCheck);
+                cols["Selected"].ColumnEdit = repoCheck;
+                cols["Selected"].OptionsColumn.AllowEdit = true;
+            }
+            // Столбец «Привязка»: пусто если поставщик не в iiko, иначе ✓ зелёная / ✗ красная
+            if (cols["RequiresBinding"] != null)
+            {
+                cols["RequiresBinding"].Caption = "Привязка";
+                cols["RequiresBinding"].VisibleIndex = 1;
+                cols["RequiresBinding"].Width = 52;
+                cols["RequiresBinding"].OptionsColumn.AllowEdit = false;
+                cols["RequiresBinding"].DisplayFormat.FormatType = DevExpress.Utils.FormatType.None;
+            }
+
+            if (cols["CounterpartyName"] != null) { cols["CounterpartyName"].Caption = "Отправитель"; cols["CounterpartyName"].VisibleIndex = 2; }
+            if (cols["CounterpartyInn"] != null) { cols["CounterpartyInn"].Caption = "ИНН"; cols["CounterpartyInn"].VisibleIndex = 3; }
             if (cols["DocumentNumber"] != null)
             {
                 cols["DocumentNumber"].Caption = "Номер";
-                cols["DocumentNumber"].VisibleIndex = 2;
+                cols["DocumentNumber"].VisibleIndex = 4;
             }
             if (cols["DocumentDate"] != null)
             {
                 cols["DocumentDate"].Caption = "От";
-                cols["DocumentDate"].VisibleIndex = 3;
+                cols["DocumentDate"].VisibleIndex = 5;
                 cols["DocumentDate"].AppearanceCell.TextOptions.HAlignment = DevExpress.Utils.HorzAlignment.Center;
                 cols["DocumentDate"].Width = 80;
             }
             if (cols["SentToEdo"] != null)
             {
                 cols["SentToEdo"].Caption = "Отправлен в ЭДО";
-                cols["SentToEdo"].VisibleIndex = 4;
+                cols["SentToEdo"].VisibleIndex = 6;
                 cols["SentToEdo"].AppearanceCell.TextOptions.HAlignment = DevExpress.Utils.HorzAlignment.Center;
             }
             if (cols["TotalVat"] != null)
             {
                 cols["TotalVat"].Caption = "Сумма НДС";
-                cols["TotalVat"].VisibleIndex = 5;
+                cols["TotalVat"].VisibleIndex = 7;
                 cols["TotalVat"].Width = 100;
             }
             if (cols["TotalAmount"] != null)
             {
                 cols["TotalAmount"].Caption = "Сумма";
-                cols["TotalAmount"].VisibleIndex = 6;
+                cols["TotalAmount"].VisibleIndex = 8;
                 cols["TotalAmount"].Width = 110;
             }
-            if (cols["StatusText"] != null) { cols["StatusText"].Caption = "Статус ЭДО"; cols["StatusText"].VisibleIndex = 7; }
+            if (cols["StatusText"] != null) { cols["StatusText"].Caption = "Статус ЭДО"; cols["StatusText"].VisibleIndex = 9; }
             if (cols["SupplierFound"] != null)
             {
                 cols["SupplierFound"].Caption = "Поставщик";
-                cols["SupplierFound"].VisibleIndex = 8;
+                cols["SupplierFound"].VisibleIndex = 10;
                 cols["SupplierFound"].Width = 80;
+                cols["SupplierFound"].OptionsColumn.AllowEdit = false;
             }
             if (cols["Supplier"] != null) cols["Supplier"].Visible = false;
-            // Столбик «Накладная iiko» больше не показываем отдельно — номер включён в статус.
             if (cols["IikoInvoice"] != null) cols["IikoInvoice"].Visible = false;
             if (cols["IikoStatus"] != null)
             {
                 cols["IikoStatus"].Caption = "Статус накладной";
-                cols["IikoStatus"].VisibleIndex = 9;
+                cols["IikoStatus"].VisibleIndex = 11;
                 cols["IikoStatus"].Width = 220;
+                cols["IikoStatus"].OptionsColumn.AllowEdit = false;
             }
             if (cols["IikoSupplierId"] != null) cols["IikoSupplierId"].Visible = false;
+
+            // Все остальные столбцы только для чтения (кроме Selected)
+            foreach (DevExpress.XtraGrid.Columns.GridColumn c in cols)
+            {
+                if (c.FieldName != "Selected")
+                    c.OptionsColumn.AllowEdit = false;
+            }
 
             _gridView.CustomDrawCell -= GridView_CustomDrawCell;
             _gridView.CustomDrawCell += GridView_CustomDrawCell;
@@ -479,6 +554,77 @@ namespace Pages
                 var text = val?.ToString() ?? "";
                 if (!string.IsNullOrEmpty(text))
                     e.Appearance.BackColor = Color.LightGreen;
+            }
+            else if (e.Column.FieldName == "RequiresBinding")
+            {
+                var row = view.GetRow(e.RowHandle) as DiadocDocumentRow;
+                if (row == null) { e.DisplayText = ""; return; }
+                // Поставщик не найден в iiko — пусто (к внесению не относится)
+                if (!row.SupplierFound)
+                {
+                    e.DisplayText = "";
+                    return;
+                }
+                // Поставщик найден: зелёная галочка если все привязки сделаны, иначе красный крестик
+                if (row.AllItemsMapped)
+                {
+                    e.Appearance.ForeColor = Color.Green;
+                    e.DisplayText = "✓";
+                }
+                else
+                {
+                    e.Appearance.ForeColor = Color.Red;
+                    e.DisplayText = "✗";
+                }
+            }
+        }
+
+        private void GridView_CellValueChanged(object sender, CellValueChangedEventArgs e)
+        {
+            if (e.Column?.FieldName == "Selected")
+            {
+                _gridView.PostEditor();
+                _gridView.UpdateCurrentRow();
+                RefreshBatchPanelState();
+            }
+        }
+
+        private void RefreshBatchPanelState()
+        {
+            if (_currentMode != ModeIncoming || _grid == null)
+            {
+                if (_batchActionsPanel != null)
+                    _batchActionsPanel.Visible = false;
+                return;
+            }
+            var list = _grid.DataSource as List<DiadocDocumentRow>;
+            if (list == null)
+            {
+                _batchActionsPanel.Visible = false;
+                return;
+            }
+            var selected = list.Where(r => r.Selected).ToList();
+            if (selected.Count == 0)
+            {
+                _batchActionsPanel.Visible = false;
+                return;
+            }
+            _batchActionsPanel.Visible = true;
+            _ = EnsureBatchStoreComboPopulated();
+            var anyRequiresBinding = selected.Any(r => r.RequiresBinding || (r.SupplierFound && !r.AllItemsMapped));
+            if (anyRequiresBinding)
+            {
+                _btnBatchSignAndUpload.Enabled = false;
+                _btnBatchUpload.Enabled = false;
+                _btnBatchReject.Enabled = false;
+                _lblBatchHint.Text = "Сначала сделай привязку для накладных с отметкой «требуется привязка», потом сможешь выгрузить все, или сними галочки с них и выгрузи остальные.";
+            }
+            else
+            {
+                _btnBatchSignAndUpload.Enabled = true;
+                _btnBatchUpload.Enabled = true;
+                _btnBatchReject.Enabled = true;
+                _lblBatchHint.Text = "";
             }
         }
 
@@ -1122,6 +1268,191 @@ namespace Pages
             }
         }
 
+        private List<DiadocDocumentRow> GetSelectedDocumentsForBatch()
+        {
+            if (_currentMode != ModeIncoming || _grid?.DataSource == null)
+                return new List<DiadocDocumentRow>();
+            var list = _grid.DataSource as List<DiadocDocumentRow>;
+            if (list == null) return new List<DiadocDocumentRow>();
+            return list.Where(r => r.Selected && r.SupplierFound && r.AllItemsMapped).ToList();
+        }
+
+        private async Task EnsureBatchStoreComboPopulated()
+        {
+            if (_batchStoreCombo == null) return;
+            if (_stores != null && _stores.Count > 0 && _batchStoreCombo.Properties.Items.Count > 0)
+                return;
+            await EnsureStoresLoadedAsync().ConfigureAwait(true);
+            if (_stores == null || _stores.Count == 0)
+            {
+                _batchStoreCombo.Properties.Items.Clear();
+                _batchStoreCombo.Properties.Items.Add("— нет данных по складам iiko —");
+                if (_batchStoreCombo.Properties.Items.Count > 0)
+                    _batchStoreCombo.SelectedIndex = 0;
+                return;
+            }
+            _batchStoreCombo.Properties.Items.Clear();
+            foreach (var s in _stores)
+            {
+                var name = string.IsNullOrWhiteSpace(s.Name) ? s.Id : s.Name;
+                _batchStoreCombo.Properties.Items.Add(name);
+            }
+            if (_stores.Count > 0)
+                _batchStoreCombo.SelectedIndex = 0;
+        }
+
+        private string GetBatchStoreId()
+        {
+            if (_stores == null || _stores.Count == 0 || _batchStoreCombo == null) return null;
+            if (_batchStoreCombo.SelectedIndex >= 0 && _batchStoreCombo.SelectedIndex < _stores.Count)
+                return _stores[_batchStoreCombo.SelectedIndex].Id;
+            return _batchStoreCombo.Text?.Trim();
+        }
+
+        private async Task BatchUploadAsync()
+        {
+            var selected = GetSelectedDocumentsForBatch();
+            if (selected.Count == 0) return;
+            var boxId = GetSelectedBoxId();
+            if (string.IsNullOrEmpty(boxId) || _client == null || _iikoClient == null) return;
+            await EnsureBatchStoreComboPopulated().ConfigureAwait(true);
+            var storeId = GetBatchStoreId();
+            if (string.IsNullOrWhiteSpace(storeId))
+            {
+                XtraMessageBox.Show("Выберите склад iiko в панели массовой выгрузки.", "Массовая выгрузка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            var createWithPosting = _chkCreateWithPosting != null && _chkCreateWithPosting.Checked;
+            int ok = 0, fail = 0;
+            foreach (var doc in selected)
+            {
+                try
+                {
+                    var items = await _client.GetUtdItemsAsync(boxId, doc.MessageId, doc.EntityId).ConfigureAwait(true);
+                    _currentDocument = doc;
+                    _currentItems = items ?? Array.Empty<UtdItemRow>();
+                    await EnsureMappingsForCurrentDocumentAsync().ConfigureAwait(true);
+                    if (!_currentAllItemsMapped) { fail++; continue; }
+                    var success = await UploadOneDocumentToIikoAsync(doc, _currentItems, storeId, createWithPosting).ConfigureAwait(true);
+                    if (success) ok++; else fail++;
+                }
+                catch { fail++; }
+            }
+            _gridView.RefreshData();
+            RefreshBatchPanelState();
+            XtraMessageBox.Show($"Выгружено: {ok}, ошибок: {fail}.", "Массовая выгрузка", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private async Task BatchSignAndUploadAsync()
+        {
+            var selected = GetSelectedDocumentsForBatch();
+            if (selected.Count == 0) return;
+            var boxId = GetSelectedBoxId();
+            if (string.IsNullOrEmpty(boxId) || _client == null || _iikoClient == null) return;
+            await EnsureBatchStoreComboPopulated().ConfigureAwait(true);
+            var storeId = GetBatchStoreId();
+            if (string.IsNullOrWhiteSpace(storeId))
+            {
+                XtraMessageBox.Show("Выберите склад iiko в панели массовой выгрузки.", "Массовая выгрузка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            var createWithPosting = _chkCreateWithPosting != null && _chkCreateWithPosting.Checked;
+            int ok = 0, fail = 0;
+            foreach (var doc in selected)
+            {
+                try
+                {
+                    var items = await _client.GetUtdItemsAsync(boxId, doc.MessageId, doc.EntityId).ConfigureAwait(true);
+                    _currentDocument = doc;
+                    _currentItems = items ?? Array.Empty<UtdItemRow>();
+                    await EnsureMappingsForCurrentDocumentAsync().ConfigureAwait(true);
+                    if (!_currentAllItemsMapped) { fail++; continue; }
+                    var uploaded = await UploadOneDocumentToIikoAsync(doc, _currentItems, storeId, createWithPosting).ConfigureAwait(true);
+                    if (uploaded)
+                    {
+                        await _client.SignIncomingDocumentAsync(boxId, doc.MessageId, doc.EntityId).ConfigureAwait(true);
+                        doc.StatusText = "Подписан";
+                        ok++;
+                    }
+                    else fail++;
+                }
+                catch { fail++; }
+            }
+            _gridView.RefreshData();
+            RefreshBatchPanelState();
+            XtraMessageBox.Show($"Подписано и выгружено: {ok}, ошибок: {fail}.", "Массовая выгрузка", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private async Task BatchRejectAsync()
+        {
+            if (_currentMode != ModeIncoming || _grid?.DataSource == null) return;
+            var list = _grid.DataSource as List<DiadocDocumentRow>;
+            var selected = list?.Where(r => r.Selected).ToList() ?? new List<DiadocDocumentRow>();
+            if (selected.Count == 0) return;
+            var boxId = GetSelectedBoxId();
+            if (string.IsNullOrEmpty(boxId) || _client == null) return;
+            var reason = XtraInputBox.Show("Причина отказа (будет отправлена в Диадок для всех выбранных):", "Массовый отказ", "Отказ в подписании документа.");
+            if (reason == null) return;
+            if (string.IsNullOrWhiteSpace(reason)) reason = "Отказ в подписании документа.";
+            int ok = 0, fail = 0;
+            foreach (var doc in selected)
+            {
+                try
+                {
+                    await _client.RejectIncomingDocumentAsync(boxId, doc.MessageId, doc.EntityId, reason).ConfigureAwait(true);
+                    doc.StatusText = "Отказ в подписи";
+                    ok++;
+                }
+                catch { fail++; }
+            }
+            _gridView.RefreshData();
+            RefreshBatchPanelState();
+            XtraMessageBox.Show($"Отказ отправлен: {ok}, ошибок: {fail}.", "Массовый отказ", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        /// <summary>Выгрузка одной накладной в iiko (для массовых операций). Возвращает true при успехе.</summary>
+        private async Task<bool> UploadOneDocumentToIikoAsync(DiadocDocumentRow doc, UtdItemRow[] items, string storeId, bool createWithPosting)
+        {
+            if (_iikoClient == null || doc == null || items == null || items.Length == 0 ||
+                items.Any(it => string.IsNullOrWhiteSpace(it.Product)) ||
+                string.IsNullOrWhiteSpace(doc.IikoSupplierId))
+                return false;
+            try
+            {
+                var supplierPricelistKey = doc.IikoSupplierId;
+                var sup = _suppliers?.FirstOrDefault(s => s.Id == doc.IikoSupplierId);
+                if (sup != null && !string.IsNullOrWhiteSpace(sup.Code))
+                    supplierPricelistKey = sup.Code;
+                var pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierPricelistKey).ConfigureAwait(true);
+                var supplierCodeToNativeGuid = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                if (pricelist != null)
+                {
+                    foreach (var row in pricelist)
+                    {
+                        if (!string.IsNullOrWhiteSpace(row.NativeProduct))
+                        {
+                            if (!string.IsNullOrWhiteSpace(row.SupplierProductNum))
+                                supplierCodeToNativeGuid[row.SupplierProductNum.Trim()] = row.NativeProduct;
+                            if (!string.IsNullOrWhiteSpace(row.SupplierProductCode))
+                                supplierCodeToNativeGuid[row.SupplierProductCode.Trim()] = row.NativeProduct;
+                        }
+                    }
+                }
+                var xml = BuildIncomingInvoiceXml(doc, items, doc.IikoSupplierId, storeId, supplierCodeToNativeGuid, createWithPosting);
+                var result = await _iikoClient.ImportIncomingInvoiceAsync(xml).ConfigureAwait(true);
+                if (result.Valid == true)
+                {
+                    doc.IikoInvoice = result.DocumentNumber ?? doc.DocumentNumber;
+                    doc.IikoStatus = createWithPosting
+                        ? $"Внесено в iiko с проведением (№ {doc.IikoInvoice})"
+                        : $"Внесено в iiko без проведения (№ {doc.IikoInvoice})";
+                    return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
         private async void RefreshIncomingDocumentsAsync()
         {
             if (_client == null) return;
@@ -1224,6 +1555,7 @@ namespace Pages
 
                 _grid.DataSource = list;
                 ApplyDocumentsColumns();
+                RefreshBatchPanelState();
             }
             catch (Exception ex)
             {

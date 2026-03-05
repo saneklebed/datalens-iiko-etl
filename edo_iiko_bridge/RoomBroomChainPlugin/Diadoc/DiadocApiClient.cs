@@ -1381,5 +1381,11 @@ namespace RoomBroomChainPlugin.Diadoc
         public string IikoSupplierId { get; set; }
         /// <summary>Статус накладной относительно iiko (не внесена / внесена без/с проведением / не требует внесения).</summary>
         public string IikoStatus { get; set; }
+        /// <summary>Выбрана ли накладная для массовой выгрузки (чекбокс в списке).</summary>
+        public bool Selected { get; set; }
+        /// <summary>Требуется ли привязка (поставщик/прайс) перед внесением в iiko.</summary>
+        public bool RequiresBinding => !SupplierFound;
+        /// <summary>Все строки накладной привязаны к товарам iiko (заполняется при открытии документа в детали).</summary>
+        public bool AllItemsMapped { get; set; }
     }
 }
