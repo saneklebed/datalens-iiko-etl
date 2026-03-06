@@ -6,6 +6,10 @@
     <AssemblyName>RoomBroomChainPlugin</AssemblyName>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <!-- Обфускация только для Release: усложняет реверс DLL, публичный API плагина сохраняется -->
+    <Obfuscate Condition="'$(Configuration)' == 'Release'">true</Obfuscate>
+    <ConfuserReplaceOutput Condition="'$(Configuration)' == 'Release'">true</ConfuserReplaceOutput>
+    <ConfuserProject Condition="'$(Configuration)' == 'Release'">$(MSBuildProjectDirectory)\$(MSBuildProjectName).crproj</ConfuserProject>
   </PropertyGroup>
 
   <!--
@@ -44,6 +48,10 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Confuser.MSBuild" Version="1.5.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <!--

@@ -1,0 +1,29 @@
+<project outputDir="." baseDir="obj\Release" xmlns="http://confuser.codeplex.com">
+  <rule pattern="true" preset="normal" inherit="false" />
+  <rule pattern="true">
+    <protection id="constants">
+      <argument name="mode" value="normal" />
+      <argument name="elements" value="SN" />
+      <argument name="decoderCount" value="8" />
+      <argument name="cfg" value="false" />
+    </protection>
+    <protection id="ref proxy">
+      <argument name="mode" value="mild" />
+      <argument name="internal" value="false" />
+    </protection>
+    <protection id="ctrl flow">
+      <argument name="type" value="switch" />
+      <argument name="predicate" value="normal" />
+      <argument name="intensity" value="50" />
+    </protection>
+    <protection id="anti tamper">
+      <argument name="mode" value="normal" />
+      <argument name="key" value="normal" />
+    </protection>
+    <protection id="anti debug" />
+  </rule>
+  <module path="RoomBroomChainPlugin.dll" />
+  <probePath>C:\Program Files\iiko\iikoChain\Office</probePath>
+  <probePath>C:\Users\Orange\.nuget\packages\microsoft.netframework.referenceassemblies.net48\1.0.3\build\.NETFramework\v4.8</probePath>
+  <probePath>C:\Users\Orange\.nuget\packages\newtonsoft.json\13.0.3\lib\net45</probePath>
+</project>

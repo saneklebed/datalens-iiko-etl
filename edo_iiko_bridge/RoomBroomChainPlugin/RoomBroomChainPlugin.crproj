@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project outputDir="." baseDir="." xmlns="http://confuser.codeplex.com">
+  <!--
+    Многоуровневая защита DLL для конечного пользователя.
+    Уровень 1: переименование (preset normal) — классы, методы, поля.
+    Уровень 2: шифрование строк и констант — в декомпиляторе не видно текстов.
+    Уровень 3: ref proxy — вызовы методов через прокси, сложнее проследить логику.
+    Уровень 4: control flow — «спагетти»-код, порядок выполнения запутан.
+    Уровень 5: anti tamper — тела методов шифруются по checksum модуля; при изменении DLL не грузится, декомпилятор показывает пустые методы.
+    Уровень 6: anti debug — затрудняет отладку/профилирование реверс-инженером.
+    Публичный API плагина (точки входа для iikoChain) сохраняется.
+  -->
+  <rule pattern="true" preset="normal" inherit="false" />
+  <rule pattern="true" inherit="true">
+    <!-- Шифрование строк и числовых констант -->
+    <protection id="constants">
+      <argument name="mode" value="normal" />
+      <argument name="elements" value="SN" />
+      <argument name="decoderCount" value="8" />
+      <argument name="cfg" value="false" />
+    </protection>
+    <!-- Скрытие вызовов методов через прокси -->
+    <protection id="ref proxy">
+      <argument name="mode" value="mild" />
+      <argument name="internal" value="false" />
+    </protection>
+    <!-- Запутывание потока управления (switch-based) -->
+    <protection id="ctrl flow">
+      <argument name="type" value="switch" />
+      <argument name="predicate" value="normal" />
+      <argument name="intensity" value="50" />
+    </protection>
+    <!-- Целостность модуля: при изменении DLL не загрузится; декомпилятор показывает пустые тела методов -->
+    <protection id="anti tamper">
+      <argument name="mode" value="normal" />
+      <argument name="key" value="normal" />
+    </protection>
+    <!-- Затруднение отладки и дампа памяти -->
+    <protection id="anti debug" />
+  </rule>
+  <module path="RoomBroomChainPlugin.dll" />
+</project>

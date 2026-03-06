@@ -2,8 +2,12 @@
 
 ## Важно: кто что делает
 
-- **Сборку ZIP делает AI — всегда сам, одной командой.** После любого изменения кода плагина AI запускает `scripts/package.ps1` (один вызов powershell -File ...) и получает `dist/RoomBroomChainPlugin.zip`. Пользователю не предлагать «запусти скрипт»; упаковку не делать вручную по шагам.
-- **Задача пользователя** — взять готовый `RoomBroomChainPlugin.zip` из `dist`, перенести в папку плагинов iikoChain, распаковать и тестировать.
+- **Сборку ZIP делает AI — всегда сам, одной командой.** После любого изменения кода плагина AI запускает `scripts/package.ps1` (один вызов powershell -File ...) и получает в `dist/` два архива:
+  - **`RoomBroomChainPlugin.zip`** — для конечного пользователя (Release, с обфускацией);
+  - **`RoomBroomChainPlugin-dev.zip`** — для разработки (Debug, без обфускации, удобнее дебажить и дорабатывать).
+- Пользователю не предлагать «запусти скрипт»; упаковку не делать вручную по шагам. Один ZIP: `package.ps1 -Single -Configuration Release` или `-Configuration Debug`.
+
+**Безопасность:** при сборке Release к DLL применяется многоуровневая защита (переименование, шифрование строк, ref proxy, control flow, anti tamper, anti debug). Клиенту отдавать только `RoomBroomChainPlugin.zip`. Подробнее: [docs/security.md](docs/security.md).
 
 ---
 
@@ -48,7 +52,8 @@ RoomBroomChainPlugin/
 ├── scripts/
 │   └── package.ps1             # Сборка + ZIP
 └── dist/
-    └── RoomBroomChainPlugin.zip  # Готовый архив для развёртывания
+    ├── RoomBroomChainPlugin.zip      # Для клиента (с обфускацией)
+    └── RoomBroomChainPlugin-dev.zip  # Для разработки (без обфускации)
 ```
 
 ## Как собрать
@@ -61,7 +66,7 @@ RoomBroomChainPlugin/
 .\edo_iiko_bridge\RoomBroomChainPlugin\scripts\package.ps1
 ```
 
-На выходе: `dist/RoomBroomChainPlugin.zip`
+На выходе в `dist/`: **RoomBroomChainPlugin.zip** (клиент) и **RoomBroomChainPlugin-dev.zip** (для себя). Один архив: `package.ps1 -Single -Configuration Release` или `-Configuration Debug`.
 
 ## Как установить
 
