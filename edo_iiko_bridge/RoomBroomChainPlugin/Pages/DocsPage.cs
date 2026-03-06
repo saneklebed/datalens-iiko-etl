@@ -26,7 +26,6 @@ namespace Pages
         private ComboBoxEdit _legalEntityCombo;
         private PanelControl _buttonsPanel;
         private PanelControl _backPanel;
-        private SimpleButton _btnDrafts;
         private SimpleButton _btnCounteragents;
         private SimpleButton _btnIncoming;
         private PanelControl _filterPanel;
@@ -39,6 +38,9 @@ namespace Pages
         private SimpleButton _btnBatchSignAndUpload;
         private SimpleButton _btnBatchUpload;
         private SimpleButton _btnBatchReject;
+        private LabelControl _lblBatchSignIcon;
+        private LabelControl _lblBatchUploadIcon;
+        private LabelControl _lblBatchRejectIcon;
         private LabelControl _lblBatchHint;
         private ComboBoxEdit _batchStoreCombo;
         private LabelControl _lblBatchStore;
@@ -49,6 +51,9 @@ namespace Pages
         private SimpleButton _btnSignAndUpload;
         private SimpleButton _btnUploadOnly;
         private SimpleButton _btnReject;
+        private LabelControl _lblSignIcon;
+        private LabelControl _lblRejectIcon;
+        private LabelControl _lblUploadIcon;
         private SimpleButton _btnRefreshMappings;
         private CheckEdit _chkCreateWithPosting;
         private ComboBoxEdit _storeCombo;
@@ -62,10 +67,9 @@ namespace Pages
         private List<CounteragentRow> _counteragents;
         private List<IikoSupplier> _suppliers;
         private List<IikoStore> _stores;
-        private const string ModeDrafts = "Черновики";
-        private const string ModeCounteragents = "Контрагенты";
-        private const string ModeIncoming = "Входящие";
-        private const string ModeIncomingDetails = "Входящие_Детали";
+        private const string ModeCounteragents = "Поставщики";
+        private const string ModeIncoming = "Накладные";
+        private const string ModeIncomingDetails = "Накладные_Детали";
 
         public DocsPage()
         {
@@ -109,21 +113,17 @@ namespace Pages
                 Height = 44,
                 Padding = new Padding(8, 4, 8, 4)
             };
-            _btnDrafts = new SimpleButton { Text = ModeDrafts, Width = 120 };
             _btnCounteragents = new SimpleButton { Text = ModeCounteragents, Width = 120 };
             _btnIncoming = new SimpleButton { Text = ModeIncoming, Width = 120 };
-            _btnDrafts.Click += (s, e) => SetMode(ModeDrafts);
             _btnCounteragents.Click += (s, e) => SetMode(ModeCounteragents);
             _btnIncoming.Click += (s, e) => SetMode(ModeIncoming);
 
             var flowBtns = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight };
-            flowBtns.Controls.Add(_btnDrafts);
             flowBtns.Controls.Add(_btnCounteragents);
             flowBtns.Controls.Add(_btnIncoming);
             _buttonsPanel.Controls.Add(flowBtns);
-            _btnDrafts.Location = new Point(8, 8);
-            _btnCounteragents.Location = new Point(136, 8);
-            _btnIncoming.Location = new Point(264, 8);
+            _btnCounteragents.Location = new Point(8, 8);
+            _btnIncoming.Location = new Point(136, 8);
 
             var now = DateTime.Now;
             _filterPanel = new PanelControl
@@ -174,9 +174,93 @@ namespace Pages
                 Visible = false,
                 BorderStyle = BorderStyles.NoBorder
             };
-            _btnBatchSignAndUpload = new SimpleButton { Text = "Подписать и выгрузить", Width = 190 };
-            _btnBatchUpload = new SimpleButton { Text = "Выгрузить", Width = 120 };
-            _btnBatchReject = new SimpleButton { Text = "Отказать", Width = 100 };
+            _btnBatchSignAndUpload = new SimpleButton
+            {
+                Text = "   Подписать и выгрузить",
+                Width = 172,
+                Height = 26
+            };
+            _btnBatchSignAndUpload.Appearance.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
+            _btnBatchSignAndUpload.Appearance.ForeColor = Color.ForestGreen;
+            _btnBatchSignAndUpload.AppearanceDisabled.BackColor = Color.LightGray;
+            _btnBatchSignAndUpload.AppearanceDisabled.ForeColor = Color.Gray;
+            _lblBatchSignIcon = new LabelControl
+            {
+                Text = "✓",
+                Parent = _btnBatchSignAndUpload,
+                Location = new Point(4, 3),
+                Size = new Size(18, 20),
+                MinimumSize = new Size(18, 20),
+                MaximumSize = new Size(18, 20),
+                Padding = new Padding(0),
+                BackColor = SystemColors.Control,
+                Font = new Font("Segoe UI Symbol", 11f, FontStyle.Bold),
+                ForeColor = Color.ForestGreen,
+                Cursor = Cursors.Hand,
+                AutoSizeMode = LabelAutoSizeMode.None,
+                Appearance = { TextOptions = { HAlignment = DevExpress.Utils.HorzAlignment.Center, VAlignment = DevExpress.Utils.VertAlignment.Center } }
+            };
+            _lblBatchSignIcon.Click += (s, e) => _btnBatchSignAndUpload.PerformClick();
+            _lblBatchSignIcon.BringToFront();
+
+            _btnBatchUpload = new SimpleButton
+            {
+                Text = "   Выгрузить",
+                Width = 112,
+                Height = 26
+            };
+            _btnBatchUpload.Appearance.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
+            _btnBatchUpload.Appearance.ForeColor = Color.ForestGreen;
+            _btnBatchUpload.AppearanceDisabled.BackColor = Color.LightGray;
+            _btnBatchUpload.AppearanceDisabled.ForeColor = Color.Gray;
+            _lblBatchUploadIcon = new LabelControl
+            {
+                Text = "✓",
+                Parent = _btnBatchUpload,
+                Location = new Point(4, 3),
+                Size = new Size(18, 20),
+                MinimumSize = new Size(18, 20),
+                MaximumSize = new Size(18, 20),
+                Padding = new Padding(0),
+                BackColor = SystemColors.Control,
+                Font = new Font("Segoe UI Symbol", 11f, FontStyle.Bold),
+                ForeColor = Color.ForestGreen,
+                Cursor = Cursors.Hand,
+                AutoSizeMode = LabelAutoSizeMode.None,
+                Appearance = { TextOptions = { HAlignment = DevExpress.Utils.HorzAlignment.Center, VAlignment = DevExpress.Utils.VertAlignment.Center } }
+            };
+            _lblBatchUploadIcon.Click += (s, e) => _btnBatchUpload.PerformClick();
+            _lblBatchUploadIcon.BringToFront();
+
+            _btnBatchReject = new SimpleButton
+            {
+                Text = "   Отказать",
+                Width = 92,
+                Height = 26
+            };
+            _btnBatchReject.Appearance.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
+            _btnBatchReject.Appearance.ForeColor = Color.DarkRed;
+            _btnBatchReject.AppearanceDisabled.BackColor = Color.LightGray;
+            _btnBatchReject.AppearanceDisabled.ForeColor = Color.Gray;
+            _lblBatchRejectIcon = new LabelControl
+            {
+                Text = "✗",
+                Parent = _btnBatchReject,
+                Location = new Point(4, 3),
+                Size = new Size(18, 20),
+                MinimumSize = new Size(18, 20),
+                MaximumSize = new Size(18, 20),
+                Padding = new Padding(0),
+                BackColor = SystemColors.Control,
+                Font = new Font("Segoe UI Symbol", 11f, FontStyle.Bold),
+                ForeColor = Color.DarkRed,
+                Cursor = Cursors.Hand,
+                AutoSizeMode = LabelAutoSizeMode.None,
+                Appearance = { TextOptions = { HAlignment = DevExpress.Utils.HorzAlignment.Center, VAlignment = DevExpress.Utils.VertAlignment.Center } }
+            };
+            _lblBatchRejectIcon.Click += (s, e) => _btnBatchReject.PerformClick();
+            _lblBatchRejectIcon.BringToFront();
+
             _lblBatchHint = new LabelControl
             {
                 AutoSizeMode = LabelAutoSizeMode.None,
@@ -216,11 +300,14 @@ namespace Pages
 
             _btnBack = new SimpleButton
             {
-                Text = "← Назад к входящим",
-                Width = 120,
-                Height = 20,
+                Text = "  ← Назад к накладным",
+                Width = 145,
+                Height = 28,
                 Dock = DockStyle.Left
             };
+            _btnBack.Appearance.Font = new Font("Segoe UI", 9.25f, FontStyle.Bold);
+            _btnBack.Appearance.ForeColor = Color.SteelBlue;
+            _btnBack.Appearance.BackColor = Color.AliceBlue;
             _btnBack.Click += (s, e) =>
             {
                 if (_currentDocument != null)
@@ -250,9 +337,92 @@ namespace Pages
                 Padding = new Padding(4)
             };
 
-            _btnSignAndUpload = new SimpleButton { Text = "Подписать и выгрузить в iiko", Width = 190 };
-            _btnReject = new SimpleButton { Text = "Отказать", Width = 100 };
-            _btnUploadOnly = new SimpleButton { Text = "Выгрузить в iiko", Width = 150 };
+            _btnSignAndUpload = new SimpleButton
+            {
+                Text = "   Подписать и выгрузить в iiko",
+                Width = 235,
+                Height = 32
+            };
+            _btnSignAndUpload.Appearance.Font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+            _btnSignAndUpload.Appearance.ForeColor = Color.ForestGreen;
+            _btnSignAndUpload.AppearanceDisabled.BackColor = Color.LightGray;
+            _btnSignAndUpload.AppearanceDisabled.ForeColor = Color.Gray;
+            _lblSignIcon = new LabelControl
+            {
+                Text = "✓",
+                Parent = _btnSignAndUpload,
+                Location = new Point(6, 4),
+                Size = new Size(24, 24),
+                MinimumSize = new Size(24, 24),
+                MaximumSize = new Size(24, 24),
+                Padding = new Padding(0),
+                BackColor = SystemColors.Control,
+                Font = new Font("Segoe UI Symbol", 14f, FontStyle.Bold),
+                ForeColor = Color.ForestGreen,
+                Cursor = Cursors.Hand,
+                AutoSizeMode = LabelAutoSizeMode.None,
+                Appearance = { TextOptions = { HAlignment = DevExpress.Utils.HorzAlignment.Center, VAlignment = DevExpress.Utils.VertAlignment.Center } }
+            };
+            _lblSignIcon.Click += (s, e) => _btnSignAndUpload.PerformClick();
+            _lblSignIcon.BringToFront();
+
+            _btnReject = new SimpleButton
+            {
+                Text = "  Отказать",
+                Width = 118,
+                Height = 32
+            };
+            _btnReject.Appearance.Font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+            _btnReject.Appearance.ForeColor = Color.DarkRed;
+            _btnReject.AppearanceDisabled.BackColor = Color.LightGray;
+            _btnReject.AppearanceDisabled.ForeColor = Color.Gray;
+            _lblRejectIcon = new LabelControl
+            {
+                Text = "✗",
+                Parent = _btnReject,
+                Location = new Point(6, 4),
+                Size = new Size(24, 24),
+                MinimumSize = new Size(24, 24),
+                MaximumSize = new Size(24, 24),
+                Padding = new Padding(0),
+                BackColor = SystemColors.Control,
+                Font = new Font("Segoe UI Symbol", 14f, FontStyle.Bold),
+                ForeColor = Color.DarkRed,
+                Cursor = Cursors.Hand,
+                AutoSizeMode = LabelAutoSizeMode.None,
+                Appearance = { TextOptions = { HAlignment = DevExpress.Utils.HorzAlignment.Center, VAlignment = DevExpress.Utils.VertAlignment.Center } }
+            };
+            _lblRejectIcon.Click += (s, e) => _btnReject.PerformClick();
+            _lblRejectIcon.BringToFront();
+
+            _btnUploadOnly = new SimpleButton
+            {
+                Text = "  Выгрузить в iiko",
+                Width = 178,
+                Height = 32
+            };
+            _btnUploadOnly.Appearance.Font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+            _btnUploadOnly.Appearance.ForeColor = Color.ForestGreen;
+            _btnUploadOnly.AppearanceDisabled.BackColor = Color.LightGray;
+            _btnUploadOnly.AppearanceDisabled.ForeColor = Color.Gray;
+            _lblUploadIcon = new LabelControl
+            {
+                Text = "✓",
+                Parent = _btnUploadOnly,
+                Location = new Point(6, 4),
+                Size = new Size(24, 24),
+                MinimumSize = new Size(24, 24),
+                MaximumSize = new Size(24, 24),
+                Padding = new Padding(0),
+                BackColor = SystemColors.Control,
+                Font = new Font("Segoe UI Symbol", 14f, FontStyle.Bold),
+                ForeColor = Color.ForestGreen,
+                Cursor = Cursors.Hand,
+                AutoSizeMode = LabelAutoSizeMode.None,
+                Appearance = { TextOptions = { HAlignment = DevExpress.Utils.HorzAlignment.Center, VAlignment = DevExpress.Utils.VertAlignment.Center } }
+            };
+            _lblUploadIcon.Click += (s, e) => _btnUploadOnly.PerformClick();
+            _lblUploadIcon.BringToFront();
             _btnRefreshMappings = new SimpleButton { Text = "Обновить прайс-лист", Width = 150 };
 
             _btnUploadOnly.Click += async (s, e) => await UploadToIikoAsync(false);
@@ -352,7 +522,7 @@ namespace Pages
             _detailsPanel.Controls.Add(actionsPanel);
             _detailsPanel.Controls.Add(detailsTop);
 
-            // Отдельная панель под кнопку «Назад к входящим»
+            // Отдельная панель под кнопку «Назад к накладным»
             _backPanel = new PanelControl
             {
                 Dock = DockStyle.Top,
@@ -388,6 +558,8 @@ namespace Pages
                 _buttonsPanel.Visible = (mode != ModeIncomingDetails);
             if (_backPanel != null)
                 _backPanel.Visible = (mode == ModeIncomingDetails);
+            if (_batchActionsPanel != null && mode == ModeIncomingDetails)
+                _batchActionsPanel.Visible = false;
 
             if (mode == ModeIncoming)
             {
@@ -656,12 +828,26 @@ namespace Pages
             }
             _batchActionsPanel.Visible = true;
             _ = EnsureBatchStoreComboPopulated();
+            // Уже внесённые в iiko (не удалённые) — блокируем выгрузку, чтобы не дублировать приход.
+            var anyAlreadyInIiko = selected.Any(r =>
+            {
+                var s = (r.IikoStatus ?? "").Trim().ToLowerInvariant();
+                return s.StartsWith("внесено в iiko");
+            });
             // Блокируем кнопки, если среди выбранных:
-            // 1) есть накладные без поставщика в iiko (требуется привязка поставщика), или
-            // 2) есть накладные, для которых не все строки привязаны (AllItemsMapped != true).
+            // 1) есть накладные, уже внесённые в iiko (не дублируем приход), или
+            // 2) есть накладные без поставщика в iiko (требуется привязка), или
+            // 3) есть накладные, для которых точно не все строки привязаны (AllItemsMapped == false; null = неизвестно, не блокируем).
             var anyRequiresBinding = selected.Any(r => r.RequiresBinding);
-            var anyNotFullyMapped = selected.Any(r => r.AllItemsMapped != true);
-            if (anyRequiresBinding || anyNotFullyMapped)
+            var anyNotFullyMapped = selected.Any(r => r.AllItemsMapped == false);
+            if (anyAlreadyInIiko)
+            {
+                _btnBatchSignAndUpload.Enabled = false;
+                _btnBatchUpload.Enabled = false;
+                _btnBatchReject.Enabled = false;
+                _lblBatchHint.Text = "Среди выбранных есть накладные, уже внесённые в iiko. Снимите их с выбора, чтобы не дублировать приход.";
+            }
+            else if (anyRequiresBinding || anyNotFullyMapped)
             {
                 _btnBatchSignAndUpload.Enabled = false;
                 _btnBatchUpload.Enabled = false;
@@ -674,6 +860,29 @@ namespace Pages
                 _btnBatchUpload.Enabled = true;
                 _btnBatchReject.Enabled = true;
                 _lblBatchHint.Text = "";
+            }
+            SyncBatchIconLabelsAppearance();
+        }
+
+        private void SyncBatchIconLabelsAppearance()
+        {
+            if (_lblBatchSignIcon != null)
+            {
+                _lblBatchSignIcon.Enabled = _btnBatchSignAndUpload.Enabled;
+                _lblBatchSignIcon.BackColor = _btnBatchSignAndUpload.Enabled ? SystemColors.Control : Color.LightGray;
+                _lblBatchSignIcon.ForeColor = _btnBatchSignAndUpload.Enabled ? Color.ForestGreen : Color.Gray;
+            }
+            if (_lblBatchRejectIcon != null)
+            {
+                _lblBatchRejectIcon.Enabled = _btnBatchReject.Enabled;
+                _lblBatchRejectIcon.BackColor = _btnBatchReject.Enabled ? SystemColors.Control : Color.LightGray;
+                _lblBatchRejectIcon.ForeColor = _btnBatchReject.Enabled ? Color.DarkRed : Color.Gray;
+            }
+            if (_lblBatchUploadIcon != null)
+            {
+                _lblBatchUploadIcon.Enabled = _btnBatchUpload.Enabled;
+                _lblBatchUploadIcon.BackColor = _btnBatchUpload.Enabled ? SystemColors.Control : Color.LightGray;
+                _lblBatchUploadIcon.ForeColor = _btnBatchUpload.Enabled ? Color.ForestGreen : Color.Gray;
             }
         }
 
@@ -919,6 +1128,29 @@ namespace Pages
             _btnUploadOnly.Enabled = enabled;
             _btnSignAndUpload.Enabled = enabled;
             _btnReject.Enabled = !docFinalized;
+            SyncIconLabelsAppearance();
+        }
+
+        private void SyncIconLabelsAppearance()
+        {
+            if (_lblSignIcon != null)
+            {
+                _lblSignIcon.Enabled = _btnSignAndUpload.Enabled;
+                _lblSignIcon.BackColor = _btnSignAndUpload.Enabled ? SystemColors.Control : Color.LightGray;
+                _lblSignIcon.ForeColor = _btnSignAndUpload.Enabled ? Color.ForestGreen : Color.Gray;
+            }
+            if (_lblRejectIcon != null)
+            {
+                _lblRejectIcon.Enabled = _btnReject.Enabled;
+                _lblRejectIcon.BackColor = _btnReject.Enabled ? SystemColors.Control : Color.LightGray;
+                _lblRejectIcon.ForeColor = _btnReject.Enabled ? Color.DarkRed : Color.Gray;
+            }
+            if (_lblUploadIcon != null)
+            {
+                _lblUploadIcon.Enabled = _btnUploadOnly.Enabled;
+                _lblUploadIcon.BackColor = _btnUploadOnly.Enabled ? SystemColors.Control : Color.LightGray;
+                _lblUploadIcon.ForeColor = _btnUploadOnly.Enabled ? Color.ForestGreen : Color.Gray;
+            }
         }
 
         private bool IsDocumentFinalized()
@@ -1338,7 +1570,7 @@ namespace Pages
                 return new List<DiadocDocumentRow>();
             var list = _grid.DataSource as List<DiadocDocumentRow>;
             if (list == null) return new List<DiadocDocumentRow>();
-            return list.Where(r => r.Selected && r.SupplierFound && r.AllItemsMapped == true).ToList();
+            return list.Where(r => r.Selected && r.SupplierFound && r.AllItemsMapped != false).ToList();
         }
 
         private async Task EnsureBatchStoreComboPopulated()
@@ -1523,7 +1755,7 @@ namespace Pages
             var boxId = GetSelectedBoxId();
             if (string.IsNullOrEmpty(boxId))
             {
-                XtraMessageBox.Show("Выберите юр. лицо.", "Входящие", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                XtraMessageBox.Show("Выберите юр. лицо.", "Накладные", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
             var from = _dateFrom.DateTime;
@@ -1632,9 +1864,9 @@ namespace Pages
                 }
 
                 // Мгновенно выставляем AllItemsMapped по эвристике, без долгого похода за строками УПД:
-                // - если поставщика нет → индикатор пустой;
-                // - если статус накладной говорит, что она уже внесена/удалена в iiko → считаем, что все строки были привязаны;
-                // - иначе — считаем, что привязки ещё не доделаны.
+                // - если поставщика нет → индикатор пустой (null);
+                // - если статус накладной говорит, что она уже внесена/удалена в iiko → считаем, что все строки были привязаны (true);
+                // - «Не внесено в iiko» → неизвестно (null), чтобы не блокировать массовые кнопки; при выгрузке привязки проверятся.
                 foreach (var d in list)
                 {
                     if (!d.SupplierFound)
@@ -1650,9 +1882,12 @@ namespace Pages
                     }
                     else
                     {
-                        d.AllItemsMapped = false;
+                        d.AllItemsMapped = null;
                     }
                 }
+
+                // Пересчёт привязок по прайс-листу до отображения грида — галочки и крестики сразу.
+                await UpdateAllItemsMappedStatusAsync(boxId, list).ConfigureAwait(true);
 
                 _grid.DataSource = list;
                 ApplyDocumentsColumns();
@@ -1708,7 +1943,6 @@ namespace Pages
                     if (items == null || items.Length == 0)
                     {
                         doc.AllItemsMapped = false;
-                        _gridView?.RefreshData();
                         continue;
                     }
 
@@ -1725,7 +1959,6 @@ namespace Pages
                     if (pricelist == null || pricelist.Count == 0)
                     {
                         doc.AllItemsMapped = false;
-                        _gridView?.RefreshData();
                         continue;
                     }
 
@@ -1760,7 +1993,18 @@ namespace Pages
                     doc.AllItemsMapped = null;
                 }
             }
-            _gridView?.RefreshData();
+            if (_gridView != null && _grid != null)
+            {
+                void RefreshGridAndBatch()
+                {
+                    _gridView.RefreshData();
+                    RefreshBatchPanelState();
+                }
+                if (_grid.InvokeRequired)
+                    _grid.BeginInvoke(new Action(RefreshGridAndBatch));
+                else
+                    RefreshGridAndBatch();
+            }
         }
 
         private async void RefreshCurrentViewAsync()
@@ -1802,15 +2046,6 @@ namespace Pages
                     var ca = _counteragents;
                     var list = await Task.Run(async () =>
                         await _client.GetDocumentsAsync(boxId, true, from, to, ca).ConfigureAwait(false)
-                    ).ConfigureAwait(true) ?? new List<DiadocDocumentRow>();
-                    await MarkSuppliersAsync(list).ConfigureAwait(true);
-                    _grid.DataSource = list;
-                    ApplyDocumentsColumns();
-                }
-                else if (_currentMode == ModeDrafts)
-                {
-                    var list = await Task.Run(async () =>
-                        await _client.GetDocumentsAsync(boxId, false).ConfigureAwait(false)
                     ).ConfigureAwait(true) ?? new List<DiadocDocumentRow>();
                     await MarkSuppliersAsync(list).ConfigureAwait(true);
                     _grid.DataSource = list;
