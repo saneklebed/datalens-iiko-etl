@@ -21,6 +21,8 @@ namespace Pages
 {
     public class DocsPage : XtraUserControl
     {
+        // Инкремент для фонового пересчёта статуса привязок (чтобы отменять старые прогоны).
+        private int _mappingStatusRunId;
         private ComboBoxEdit _legalEntityCombo;
         private PanelControl _buttonsPanel;
         private PanelControl _backPanel;
@@ -50,6 +52,7 @@ namespace Pages
         private SimpleButton _btnRefreshMappings;
         private CheckEdit _chkCreateWithPosting;
         private ComboBoxEdit _storeCombo;
+        private DateEdit _incomingDateEdit;
         private GridControl _detailsGrid;
         private GridView _detailsView;
 
@@ -281,7 +284,10 @@ namespace Pages
             _btnRefreshMappings.Click += async (s, e) => await RefreshMappingsAsync();
 
             var lblStore = new LabelControl { Text = "Склад iiko:", AutoSizeMode = LabelAutoSizeMode.None, Width = 70 };
-            _storeCombo = new ComboBoxEdit { Width = 220 };
+            _storeCombo = new ComboBoxEdit { Width = 180 };
+
+            var lblIncomingDate = new LabelControl { Text = "Дата прихода в iiko:", AutoSizeMode = LabelAutoSizeMode.None, Width = 130 };
+            _incomingDateEdit = new DateEdit { Width = 110 };
 
             // Галочка «С проведением» (отображается внизу справа страницы документов). По умолчанию берётся из настроек.
             var cfgForCheckbox = ConfigStore.Load();
@@ -314,6 +320,8 @@ namespace Pages
             flowActions.Controls.Add(_btnUploadOnly);
             flowActions.Controls.Add(lblStore);
             flowActions.Controls.Add(_storeCombo);
+            flowActions.Controls.Add(lblIncomingDate);
+            flowActions.Controls.Add(_incomingDateEdit);
             flowActions.Controls.Add(_btnRefreshMappings);
             actionsPanel.Controls.Add(flowActions);
 
@@ -450,18 +458,26 @@ namespace Pages
             {
                 cols["Selected"].Caption = "Выбрать накладную";
                 cols["Selected"].VisibleIndex = 0;
-                cols["Selected"].Width = 95;
+                cols["Selected"].Width = 70;
                 var repoCheck = new DevExpress.XtraEditors.Repository.RepositoryItemCheckEdit();
+                repoCheck.EditValueChanged += (s, e) =>
+                {
+                    // Сразу фиксируем изменение и пересчитываем состояние панели массовых действий,
+                    // чтобы кнопки появлялись/блокировались уже после первого клика.
+                    _gridView.PostEditor();
+                    _gridView.UpdateCurrentRow();
+                    RefreshBatchPanelState();
+                };
                 _gridView.GridControl.RepositoryItems.Add(repoCheck);
                 cols["Selected"].ColumnEdit = repoCheck;
                 cols["Selected"].OptionsColumn.AllowEdit = true;
             }
-            // Столбец «Все ли привязки сделаны?»: только символы (✓/✗/пусто), по центру, крупнее
+            // Столбец «Все привязки сделаны?»: только символы (✓/✗/пусто), по центру, крупнее
             if (cols["RequiresBinding"] != null)
             {
-                cols["RequiresBinding"].Caption = "Все ли привязки сделаны?";
+                cols["RequiresBinding"].Caption = "Все привязки сделаны?";
                 cols["RequiresBinding"].VisibleIndex = 1;
-                cols["RequiresBinding"].Width = 58;
+                cols["RequiresBinding"].Width = 90;
                 cols["RequiresBinding"].OptionsColumn.AllowEdit = false;
                 cols["RequiresBinding"].DisplayFormat.FormatType = DevExpress.Utils.FormatType.None;
                 var repoText = new DevExpress.XtraEditors.Repository.RepositoryItemTextEdit();
@@ -493,26 +509,32 @@ namespace Pages
                 cols["SentToEdo"].Caption = "Отправлен в ЭДО";
                 cols["SentToEdo"].VisibleIndex = 6;
                 cols["SentToEdo"].AppearanceCell.TextOptions.HAlignment = DevExpress.Utils.HorzAlignment.Center;
+                cols["SentToEdo"].Width = 110;
             }
             if (cols["TotalVat"] != null)
             {
                 cols["TotalVat"].Caption = "Сумма НДС";
                 cols["TotalVat"].VisibleIndex = 7;
-                cols["TotalVat"].Width = 100;
+                cols["TotalVat"].Width = 63;
             }
             if (cols["TotalAmount"] != null)
             {
                 cols["TotalAmount"].Caption = "Сумма";
                 cols["TotalAmount"].VisibleIndex = 8;
-                cols["TotalAmount"].Width = 110;
+                cols["TotalAmount"].Width = 63;
             }
-            if (cols["StatusText"] != null) { cols["StatusText"].Caption = "Статус ЭДО"; cols["StatusText"].VisibleIndex = 9; }
+            if (cols["StatusText"] != null) { cols["StatusText"].Caption = "Статус ЭДО"; cols["StatusText"].VisibleIndex = 10; }
             if (cols["SupplierFound"] != null)
             {
                 cols["SupplierFound"].Caption = "Поставщик";
-                cols["SupplierFound"].VisibleIndex = 10;
+                cols["SupplierFound"].VisibleIndex = 9;
                 cols["SupplierFound"].Width = 80;
                 cols["SupplierFound"].OptionsColumn.AllowEdit = false;
+            }
+            // Внутренняя тех. колонка — в гриде не показываем.
+            if (cols["AllItemsMapped"] != null)
+            {
+                cols["AllItemsMapped"].Visible = false;
             }
             if (cols["Supplier"] != null) cols["Supplier"].Visible = false;
             if (cols["IikoInvoice"] != null) cols["IikoInvoice"].Visible = false;
@@ -524,6 +546,13 @@ namespace Pages
                 cols["IikoStatus"].OptionsColumn.AllowEdit = false;
             }
             if (cols["IikoSupplierId"] != null) cols["IikoSupplierId"].Visible = false;
+
+            // Заголовки всех видимых столбцов — по центру.
+            foreach (DevExpress.XtraGrid.Columns.GridColumn c in cols)
+            {
+                if (c.Visible)
+                    c.AppearanceHeader.TextOptions.HAlignment = DevExpress.Utils.HorzAlignment.Center;
+            }
 
             // Все остальные столбцы только для чтения (кроме Selected)
             foreach (DevExpress.XtraGrid.Columns.GridColumn c in cols)
@@ -576,16 +605,21 @@ namespace Pages
                 // Поставщик найден: зелёная галочка если все привязки в рамках накладной сделаны, иначе красный крестик
                 e.Appearance.TextOptions.HAlignment = DevExpress.Utils.HorzAlignment.Center;
                 e.Appearance.TextOptions.VAlignment = DevExpress.Utils.VertAlignment.Center;
-                e.Appearance.Font = new Font(e.Appearance.Font?.FontFamily ?? SystemFonts.DefaultFont.FontFamily, 14f, FontStyle.Bold);
-                if (row.AllItemsMapped)
+                e.Appearance.Font = new Font("Segoe UI Symbol", 11f, FontStyle.Bold);
+                if (row.AllItemsMapped == true)
                 {
                     e.Appearance.ForeColor = Color.Green;
                     e.DisplayText = "✓";
                 }
-                else
+                else if (row.AllItemsMapped == false)
                 {
                     e.Appearance.ForeColor = Color.Red;
                     e.DisplayText = "✗";
+                }
+                else
+                {
+                    e.Appearance.ForeColor = Color.Gray;
+                    e.DisplayText = "…";
                 }
             }
         }
@@ -622,14 +656,17 @@ namespace Pages
             }
             _batchActionsPanel.Visible = true;
             _ = EnsureBatchStoreComboPopulated();
-            // Блокируем кнопки только если среди выбранных есть накладные без поставщика в iiko (требуется привязка поставщика)
+            // Блокируем кнопки, если среди выбранных:
+            // 1) есть накладные без поставщика в iiko (требуется привязка поставщика), или
+            // 2) есть накладные, для которых не все строки привязаны (AllItemsMapped != true).
             var anyRequiresBinding = selected.Any(r => r.RequiresBinding);
-            if (anyRequiresBinding)
+            var anyNotFullyMapped = selected.Any(r => r.AllItemsMapped != true);
+            if (anyRequiresBinding || anyNotFullyMapped)
             {
                 _btnBatchSignAndUpload.Enabled = false;
                 _btnBatchUpload.Enabled = false;
                 _btnBatchReject.Enabled = false;
-                _lblBatchHint.Text = "Сначала сделай привязку для накладных с отметкой «требуется привязка», потом сможешь выгрузить все, или сними галочки с них и выгрузи остальные.";
+                _lblBatchHint.Text = "Сначала сделай привязки для всех строк выбранных накладных (зелёная галочка в колонке «Все ли привязки сделаны?»), либо сними галочки с проблемных накладных.";
             }
             else
             {
@@ -745,6 +782,15 @@ namespace Pages
 
                 await EnsureStoresLoadedAsync().ConfigureAwait(true);
                 PopulateStoresCombo();
+
+                // По умолчанию дата прихода в iiko = дата документа из Диадока.
+                if (_incomingDateEdit != null)
+                {
+                    if (DateTime.TryParse(row.DocumentDate, out var dtDoc))
+                        _incomingDateEdit.DateTime = dtDoc.Date;
+                    else
+                        _incomingDateEdit.EditValue = null;
+                }
 
                 SetMode(ModeIncomingDetails);
             }
@@ -982,7 +1028,8 @@ namespace Pages
         /// <param name="supplierCodeToNativeProductGuid">Маппинг «код/артикул поставщика» → guid нашего товара в iiko (из прайс-листа поставщика).</param>
         /// <param name="createWithPosting">Если true, в XML добавляется проведение документа (conducted).</param>
         private string BuildIncomingInvoiceXml(DiadocDocumentRow doc, UtdItemRow[] items, string supplierId, string storeId,
-            Dictionary<string, string> supplierCodeToNativeProductGuid = null, bool createWithPosting = false)
+            Dictionary<string, string> supplierCodeToNativeProductGuid = null, bool createWithPosting = false,
+            string customDateIncoming = null)
         {
             var xDoc = new XDocument();
             var root = new XElement("document");
@@ -1030,7 +1077,9 @@ namespace Pages
                 itemEl.Add(new XElement("actualAmount", it.Quantity.ToString(CultureInfo.InvariantCulture)));
             }
 
-            var dateIncoming = NormalizeDateForIikoDocument(doc.DocumentDate);
+            var dateIncoming = !string.IsNullOrWhiteSpace(customDateIncoming)
+                ? NormalizeDateForIikoDocument(customDateIncoming)
+                : NormalizeDateForIikoDocument(doc.DocumentDate);
 
             if (!string.IsNullOrWhiteSpace(dateIncoming))
                 root.Add(new XElement("dateIncoming", dateIncoming));
@@ -1130,7 +1179,10 @@ namespace Pages
 
                 // Используем галочку на форме как источник правды; она синхронизирует значение в ConfigStore.
                 var createWithPosting = _chkCreateWithPosting != null && _chkCreateWithPosting.Checked;
-                var xml = BuildIncomingInvoiceXml(_currentDocument, _currentItems, _currentDocument.IikoSupplierId, storeId, supplierCodeToNativeGuid, createWithPosting);
+                string customDate = null;
+                if (_incomingDateEdit != null && _incomingDateEdit.EditValue is DateTime dtIncoming)
+                    customDate = dtIncoming.ToString("dd.MM.yyyy");
+                var xml = BuildIncomingInvoiceXml(_currentDocument, _currentItems, _currentDocument.IikoSupplierId, storeId, supplierCodeToNativeGuid, createWithPosting, customDate);
                 var result = await _iikoClient.ImportIncomingInvoiceAsync(xml).ConfigureAwait(true);
 
                 var valid = result.Valid == true;
@@ -1286,7 +1338,7 @@ namespace Pages
                 return new List<DiadocDocumentRow>();
             var list = _grid.DataSource as List<DiadocDocumentRow>;
             if (list == null) return new List<DiadocDocumentRow>();
-            return list.Where(r => r.Selected && r.SupplierFound && r.AllItemsMapped).ToList();
+            return list.Where(r => r.Selected && r.SupplierFound && r.AllItemsMapped == true).ToList();
         }
 
         private async Task EnsureBatchStoreComboPopulated()
@@ -1512,13 +1564,27 @@ namespace Pages
                             .GetIncomingInvoicesAsync(minDate, maxDate)
                             .ConfigureAwait(true) ?? new List<IncomingInvoiceInfo>();
 
+                        // Для каждого входящего номера выбираем статус с максимальным приоритетом:
+                        // PROCESSED > NEW/пусто > DELETED. Так "внесено" важнее "удалено".
                         var byIncomingNumber = new Dictionary<string, IncomingInvoiceInfo>(StringComparer.OrdinalIgnoreCase);
                         foreach (var inv in incomingInvoices)
                         {
                             var incomingNum = (inv.IncomingDocumentNumber ?? "").Trim();
                             if (string.IsNullOrEmpty(incomingNum))
                                 continue;
-                            if (!byIncomingNumber.ContainsKey(incomingNum))
+
+                            var status = (inv.Status ?? "").Trim().ToUpperInvariant();
+                            int prio = status == "PROCESSED" ? 3 : (status == "DELETED" ? 1 : 2);
+
+                            if (!byIncomingNumber.TryGetValue(incomingNum, out var existing))
+                            {
+                                byIncomingNumber[incomingNum] = inv;
+                                continue;
+                            }
+
+                            var existingStatus = (existing.Status ?? "").Trim().ToUpperInvariant();
+                            int existingPrio = existingStatus == "PROCESSED" ? 3 : (existingStatus == "DELETED" ? 1 : 2);
+                            if (prio > existingPrio)
                                 byIncomingNumber[incomingNum] = inv;
                         }
 
@@ -1565,6 +1631,29 @@ namespace Pages
                     }
                 }
 
+                // Мгновенно выставляем AllItemsMapped по эвристике, без долгого похода за строками УПД:
+                // - если поставщика нет → индикатор пустой;
+                // - если статус накладной говорит, что она уже внесена/удалена в iiko → считаем, что все строки были привязаны;
+                // - иначе — считаем, что привязки ещё не доделаны.
+                foreach (var d in list)
+                {
+                    if (!d.SupplierFound)
+                    {
+                        d.AllItemsMapped = null;
+                        continue;
+                    }
+
+                    var status = (d.IikoStatus ?? "").Trim().ToLowerInvariant();
+                    if (status.StartsWith("внесено в iiko") || status.StartsWith("накладная в iiko"))
+                    {
+                        d.AllItemsMapped = true;
+                    }
+                    else
+                    {
+                        d.AllItemsMapped = false;
+                    }
+                }
+
                 _grid.DataSource = list;
                 ApplyDocumentsColumns();
                 RefreshBatchPanelState();
@@ -1573,6 +1662,105 @@ namespace Pages
             {
                 XtraMessageBox.Show(ex.Message, "Ошибка Диадока", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
+        }
+
+        private async Task UpdateAllItemsMappedStatusAsync(string boxId, List<DiadocDocumentRow> list)
+        {
+            if (string.IsNullOrWhiteSpace(boxId) || list == null || list.Count == 0)
+                return;
+            if (_client == null || _iikoClient == null)
+                return;
+
+            var runId = ++_mappingStatusRunId;
+
+            await EnsureSuppliersLoadedAsync().ConfigureAwait(true);
+
+            var pricelistCache = new Dictionary<string, List<SupplierPricelistItem>>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var doc in list)
+            {
+                if (runId != _mappingStatusRunId)
+                    return; // запущен новый пересчёт
+
+                if (doc == null)
+                    continue;
+
+                // Поставщик не найден — индикатор не нужен.
+                if (!doc.SupplierFound)
+                {
+                    doc.AllItemsMapped = null;
+                    continue;
+                }
+
+                // Уже посчитано (например, после открытия деталей).
+                if (doc.AllItemsMapped.HasValue)
+                    continue;
+
+                if (string.IsNullOrWhiteSpace(doc.IikoSupplierId))
+                {
+                    doc.AllItemsMapped = null;
+                    continue;
+                }
+
+                try
+                {
+                    var items = await _client.GetUtdItemsAsync(boxId, doc.MessageId, doc.EntityId).ConfigureAwait(true);
+                    if (items == null || items.Length == 0)
+                    {
+                        doc.AllItemsMapped = false;
+                        _gridView?.RefreshData();
+                        continue;
+                    }
+
+                    var supplierPricelistKey = doc.IikoSupplierId;
+                    var sup = _suppliers?.FirstOrDefault(s => s.Id == doc.IikoSupplierId);
+                    if (sup != null && !string.IsNullOrWhiteSpace(sup.Code))
+                        supplierPricelistKey = sup.Code;
+
+                    if (!pricelistCache.TryGetValue(supplierPricelistKey ?? string.Empty, out var pricelist))
+                    {
+                        pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierPricelistKey).ConfigureAwait(true);
+                        pricelistCache[supplierPricelistKey ?? string.Empty] = pricelist ?? new List<SupplierPricelistItem>();
+                    }
+                    if (pricelist == null || pricelist.Count == 0)
+                    {
+                        doc.AllItemsMapped = false;
+                        _gridView?.RefreshData();
+                        continue;
+                    }
+
+                    var codeToProduct = new Dictionary<string, SupplierPricelistItem>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var row in pricelist)
+                    {
+                        if (string.IsNullOrWhiteSpace(row.NativeProduct))
+                            continue;
+                        if (!string.IsNullOrWhiteSpace(row.SupplierProductNum))
+                            codeToProduct[row.SupplierProductNum.Trim()] = row;
+                        if (!string.IsNullOrWhiteSpace(row.SupplierProductCode))
+                            codeToProduct[row.SupplierProductCode.Trim()] = row;
+                    }
+
+                    var allMapped = true;
+                    foreach (var it in items)
+                    {
+                        var code = (it.ItemVendorCode ?? "").Trim();
+                        var article = (it.ItemArticle ?? "").Trim();
+                        SupplierPricelistItem mapped;
+                        if (!string.IsNullOrEmpty(code) && codeToProduct.TryGetValue(code, out mapped)) continue;
+                        if (!string.IsNullOrEmpty(article) && codeToProduct.TryGetValue(article, out mapped)) continue;
+                        allMapped = false;
+                        break;
+                    }
+
+                    doc.AllItemsMapped = allMapped;
+                }
+                catch
+                {
+                    // Если не удалось посчитать — оставим "неизвестно", чтобы не вводить в заблуждение крестиком.
+                    doc.AllItemsMapped = null;
+                }
+            }
+            _gridView?.RefreshData();
         }
 
         private async void RefreshCurrentViewAsync()
@@ -1599,6 +1787,12 @@ namespace Pages
                     _gridView.Columns["Inn"].Caption = "ИНН";
                     _gridView.Columns["Kpp"].Visible = true;
                     _gridView.Columns["Kpp"].Caption = "КПП";
+                    if (_gridView.Columns["Status"] != null)
+                    {
+                        _gridView.Columns["Status"].Visible = true;
+                        _gridView.Columns["Status"].Caption = "Статус";
+                        _gridView.Columns["Status"].VisibleIndex = 3;
+                    }
                 }
                 else if (_currentMode == ModeIncoming)
                 {

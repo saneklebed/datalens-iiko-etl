@@ -869,7 +869,7 @@ namespace RoomBroomChainPlugin.Diadoc
             return list;
         }
 
-        /// <summary>GET /V3/GetCounteragents?myBoxId=... (с пагинацией — загружает всех).</summary>
+        /// <summary>GET /V3/GetCounteragents?myBoxId=... (с пагинацией — загружает всех контрагентов с разными статусами).</summary>
         public async Task<List<CounteragentRow>> GetCounteragentsAsync(string myBoxId)
         {
             if (string.IsNullOrWhiteSpace(myBoxId))
@@ -878,13 +878,22 @@ namespace RoomBroomChainPlugin.Diadoc
 
             var cleanBoxId = StripBoxIdDomain(myBoxId.Trim());
             var list = new List<CounteragentRow>();
+            // Приоритет: уже подписаны > мы отправили приглашение > нам отправили приглашение.
+            await LoadCounteragentsByStatusAsync(cleanBoxId, "IsMyCounteragent", "Подписаны с нами", list).ConfigureAwait(false);
+            await LoadCounteragentsByStatusAsync(cleanBoxId, "IsInvitedByMe", "Отправили приглашение", list).ConfigureAwait(false);
+            await LoadCounteragentsByStatusAsync(cleanBoxId, "InvitesMe", "Получили приглашение", list).ConfigureAwait(false);
+            return list;
+        }
+
+        private async Task LoadCounteragentsByStatusAsync(string cleanBoxId, string statusCode, string statusText, List<CounteragentRow> acc)
+        {
             string afterIndexKey = null;
 
             for (int page = 0; page < 50; page++)
             {
                 var pq = new StringBuilder("V3/GetCounteragents");
                 pq.Append("?myBoxId=").Append(Uri.EscapeDataString(cleanBoxId));
-                pq.Append("&counteragentStatus=IsMyCounteragent");
+                pq.Append("&counteragentStatus=").Append(Uri.EscapeDataString(statusCode));
                 pq.Append("&pageSize=100");
                 if (!string.IsNullOrEmpty(afterIndexKey))
                     pq.Append("&afterIndexKey=").Append(Uri.EscapeDataString(afterIndexKey));
@@ -907,12 +916,24 @@ namespace RoomBroomChainPlugin.Diadoc
                     string cBoxId = null;
                     if (boxes != null && boxes.Count > 0)
                         cBoxId = (string)(boxes[0]["BoxId"] ?? boxes[0]["boxId"]);
-                    list.Add(new CounteragentRow
+                    var inn = (string)org["Inn"] ?? "";
+                    var kpp = (string)org["Kpp"] ?? "";
+
+                    // Не дублируем, если уже добавлен с более приоритетным статусом.
+                    if (acc.Any(x => string.Equals(x.Inn, inn, StringComparison.OrdinalIgnoreCase)
+                                     && string.Equals(x.Kpp, kpp, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        lastKey = (string)c["IndexKey"];
+                        continue;
+                    }
+
+                    acc.Add(new CounteragentRow
                     {
                         Organization = ShortenOrganizationName(shortName, fullName),
-                        Inn = (string)org["Inn"] ?? "",
-                        Kpp = (string)org["Kpp"] ?? "",
-                        BoxId = cBoxId ?? ""
+                        Inn = inn,
+                        Kpp = kpp,
+                        BoxId = cBoxId ?? "",
+                        Status = statusText
                     });
                     lastKey = (string)c["IndexKey"];
                 }
@@ -921,7 +942,6 @@ namespace RoomBroomChainPlugin.Diadoc
                     break;
                 afterIndexKey = lastKey;
             }
-            return list;
         }
 
         /// <summary>GET /V3/GetDocuments (входящие или черновики). fromDate/toDate в формате ДД.ММ.ГГГГ.</summary>
@@ -1354,6 +1374,8 @@ namespace RoomBroomChainPlugin.Diadoc
         public string Inn { get; set; }
         public string Kpp { get; set; }
         public string BoxId { get; set; }
+        /// <summary>Статус отношений: Подписаны с нами / Отправили приглашение / Получили приглашение.</summary>
+        public string Status { get; set; }
     }
 
     public class DiadocDocumentRow
@@ -1385,7 +1407,10 @@ namespace RoomBroomChainPlugin.Diadoc
         public bool Selected { get; set; }
         /// <summary>Требуется ли привязка (поставщик/прайс) перед внесением в iiko.</summary>
         public bool RequiresBinding => !SupplierFound;
-        /// <summary>Все строки накладной привязаны к товарам iiko (заполняется при открытии документа в детали).</summary>
-        public bool AllItemsMapped { get; set; }
+        /// <summary>
+        /// Все строки накладной привязаны к товарам iiko.
+        /// null = ещё не считали (в списке после загрузки), true/false = результат проверки.
+        /// </summary>
+        public bool? AllItemsMapped { get; set; }
     }
 }

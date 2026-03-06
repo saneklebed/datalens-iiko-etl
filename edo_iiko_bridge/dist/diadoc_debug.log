@@ -1011,3 +1011,270 @@
 2026-03-05T12:15:35 GetUtdItemsAsync: saved utd_last.xml to C:\Users\Orange\AppData\Local\RoomBroomChainPlugin\utd_last.xml
 2026-03-05T12:15:35 GetUtdItemsAsync: using ФНС ТаблСчФакт/СведТов format
 2026-03-05T12:15:35 GetUtdItemsAsync: parsed rows count=34
+2026-03-05T16:03:45 GetDocumentsAsync: page=0 docsFromDiadoc=83
+2026-03-05T16:03:45 GetDocumentsAsync: doc=242 date=31.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5009074246
+2026-03-05T16:03:45 GetDocumentsAsync: doc=241 date=31.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5009074246
+2026-03-05T16:03:45 GetDocumentsAsync: doc=Г0000038320 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T16:03:45 GetDocumentsAsync: doc=ПВЦБ-014894 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7707453248
+2026-03-05T16:03:45 GetDocumentsAsync: doc=Г0000824907 date=05.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=ПВЦБ-014787 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7707453248
+2026-03-05T16:03:45 GetDocumentsAsync: doc=Г0000038259 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T16:03:45 GetDocumentsAsync: doc=Г0000824839 date=05.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=Г0000038261 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T16:03:45 GetDocumentsAsync: doc=Г0000038321 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T16:03:45 GetDocumentsAsync: doc=496 date=05.03.2026 typeNamedId=ReconciliationAct SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=Г0000824841 date=05.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=61 005526 / 073 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7704218694
+2026-03-05T16:03:45 GetDocumentsAsync: doc=61 005527 / 073 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7704218694
+2026-03-05T16:03:45 GetDocumentsAsync: doc=Г0000824906 date=05.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=94 008240 / 073 date=05.03.2026 typeNamedId=UniversalCorrectionDocument SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=94 008239 / 073 date=05.03.2026 typeNamedId=UniversalCorrectionDocument SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=3654343686/3933 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7701215046
+2026-03-05T16:03:45 GetDocumentsAsync: doc=3654343685/3933 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7701215046
+2026-03-05T16:03:45 GetDocumentsAsync: doc=016912697 date=04.03.2026 typeNamedId=ReconciliationAct SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=61 005311 / 073 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7704218694
+2026-03-05T16:03:45 GetDocumentsAsync: doc=61 005377 / 073 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7704218694
+2026-03-05T16:03:45 GetDocumentsAsync: doc=51121620 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7721793895
+2026-03-05T16:03:45 GetDocumentsAsync: doc=6382 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730520245
+2026-03-05T16:03:45 GetDocumentsAsync: doc=8473 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=9705136279
+2026-03-05T16:03:45 GetDocumentsAsync: doc=УТ-11540 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730654626
+2026-03-05T16:03:45 GetDocumentsAsync: doc=26MRR044579 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7729409940
+2026-03-05T16:03:45 GetDocumentsAsync: doc=6384 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730520245
+2026-03-05T16:03:45 GetDocumentsAsync: doc=26MRR044582 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7729409940
+2026-03-05T16:03:45 GetDocumentsAsync: doc=113463/4172 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7814778434
+2026-03-05T16:03:45 GetDocumentsAsync: doc=6257/DD date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7726410031
+2026-03-05T16:03:45 GetDocumentsAsync: doc=6256/DD date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7726410031
+2026-03-05T16:03:45 GetDocumentsAsync: doc=14809 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5056005909
+2026-03-05T16:03:45 GetDocumentsAsync: doc=ТРД00008473  date=04.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=015992/26/01 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7729101200
+2026-03-05T16:03:45 GetDocumentsAsync: doc=015994/26/01 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7729101200
+2026-03-05T16:03:45 GetDocumentsAsync: doc=8470 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=9705136279
+2026-03-05T16:03:45 GetDocumentsAsync: doc=01397 date=04.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=01398 date=04.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=УТ-11543 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730654626
+2026-03-05T16:03:45 GetDocumentsAsync: doc=61 005409 / 073 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7704218694
+2026-03-05T16:03:45 GetDocumentsAsync: doc=УТ-900 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7814541629
+2026-03-05T16:03:45 GetDocumentsAsync: doc=УТ-901 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7814541629
+2026-03-05T16:03:45 GetDocumentsAsync: doc=6259/DD date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7726410031
+2026-03-05T16:03:45 GetDocumentsAsync: doc=17-0125688 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5258068806
+2026-03-05T16:03:45 GetDocumentsAsync: doc=17-0125685 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5258068806
+2026-03-05T16:03:45 GetDocumentsAsync: doc=17-0125687 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5258068806
+2026-03-05T16:03:45 GetDocumentsAsync: doc=17-0125686 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5258068806
+2026-03-05T16:03:45 GetDocumentsAsync: doc=17-0125686 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5258068806
+2026-03-05T16:03:45 GetDocumentsAsync: doc=8524 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=9705136279
+2026-03-05T16:03:45 GetDocumentsAsync: doc=14817 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5056005909
+2026-03-05T16:03:45 GetDocumentsAsync: doc=51104184 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7721793895
+2026-03-05T16:03:45 GetDocumentsAsync: doc=0VT/1387530/63134616 date=03.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=51111076 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7721793895
+2026-03-05T16:03:45 GetDocumentsAsync: doc=Г0000823162 date=03.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=000926080 date=03.03.2026 typeNamedId=ReconciliationAct SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=2534 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7714015735
+2026-03-05T16:03:45 GetDocumentsAsync: doc=Г0000037173 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T16:03:45 GetDocumentsAsync: doc=303073 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7734420298
+2026-03-05T16:03:45 GetDocumentsAsync: doc=303074 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7734420298
+2026-03-05T16:03:45 GetDocumentsAsync: doc=Г0000036801 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T16:03:45 GetDocumentsAsync: doc=0VT/1387530/63134728 date=03.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=0VT/1387530/63134728 date=03.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=0VT/1387530/63134728 date=03.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=51112739 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7721793895
+2026-03-05T16:03:45 GetDocumentsAsync: doc=Г0000037341 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T16:03:45 GetDocumentsAsync: doc=0111642534-0359 date=03.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=Г0000823181 date=03.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=Г0000036784 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T16:03:45 GetDocumentsAsync: doc=Г0000823563 date=03.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=Г0000823748 date=03.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=27727 date=03.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=316 date=02.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=26MRR042307 date=02.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7729409940
+2026-03-05T16:03:45 GetDocumentsAsync: doc=26MRR042308 date=02.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7729409940
+2026-03-05T16:03:45 GetDocumentsAsync: doc=010326-31358-лк date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=010326-29606-лс date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=010326-29853-лсп date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=010326-29283-лс date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=010326-30272-лсп date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=Г-00107766/8042 date=01.03.2026 typeNamedId=UniversalTransferDocument SellerInn=2540167061
+2026-03-05T16:03:45 GetDocumentsAsync: doc=010326-29510-лсп date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=010326-29509-лсп date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: page=1 docsFromDiadoc=2
+2026-03-05T16:03:45 GetDocumentsAsync: doc=010326-29510-лсп date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:03:45 GetDocumentsAsync: doc=010326-29509-лсп date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: page=0 docsFromDiadoc=84
+2026-03-05T16:41:34 GetDocumentsAsync: doc=242 date=31.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5009074246
+2026-03-05T16:41:34 GetDocumentsAsync: doc=241 date=31.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5009074246
+2026-03-05T16:41:34 GetDocumentsAsync: doc=Г0000038320 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T16:41:34 GetDocumentsAsync: doc=ПВЦБ-014894 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7707453248
+2026-03-05T16:41:34 GetDocumentsAsync: doc=Г0000824907 date=05.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=ПВЦБ-014787 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7707453248
+2026-03-05T16:41:34 GetDocumentsAsync: doc=Г0000038259 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T16:41:34 GetDocumentsAsync: doc=Г0000824839 date=05.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=Г0000038261 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T16:41:34 GetDocumentsAsync: doc=Г0000038321 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T16:41:34 GetDocumentsAsync: doc=496 date=05.03.2026 typeNamedId=ReconciliationAct SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=Г0000824841 date=05.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=61 005526 / 073 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7704218694
+2026-03-05T16:41:34 GetDocumentsAsync: doc=61 005527 / 073 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7704218694
+2026-03-05T16:41:34 GetDocumentsAsync: doc=Г0000824906 date=05.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=94 008240 / 073 date=05.03.2026 typeNamedId=UniversalCorrectionDocument SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=94 008239 / 073 date=05.03.2026 typeNamedId=UniversalCorrectionDocument SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=3654343686/3933 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7701215046
+2026-03-05T16:41:34 GetDocumentsAsync: doc=3654343685/3933 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7701215046
+2026-03-05T16:41:34 GetDocumentsAsync: doc=<no-number> date=05.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=016912697 date=04.03.2026 typeNamedId=ReconciliationAct SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=61 005311 / 073 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7704218694
+2026-03-05T16:41:34 GetDocumentsAsync: doc=61 005377 / 073 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7704218694
+2026-03-05T16:41:34 GetDocumentsAsync: doc=51121620 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7721793895
+2026-03-05T16:41:34 GetDocumentsAsync: doc=6382 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730520245
+2026-03-05T16:41:34 GetDocumentsAsync: doc=8473 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=9705136279
+2026-03-05T16:41:34 GetDocumentsAsync: doc=УТ-11540 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730654626
+2026-03-05T16:41:34 GetDocumentsAsync: doc=26MRR044579 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7729409940
+2026-03-05T16:41:34 GetDocumentsAsync: doc=6384 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730520245
+2026-03-05T16:41:34 GetDocumentsAsync: doc=26MRR044582 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7729409940
+2026-03-05T16:41:34 GetDocumentsAsync: doc=113463/4172 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7814778434
+2026-03-05T16:41:34 GetDocumentsAsync: doc=6257/DD date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7726410031
+2026-03-05T16:41:34 GetDocumentsAsync: doc=6256/DD date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7726410031
+2026-03-05T16:41:34 GetDocumentsAsync: doc=14809 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5056005909
+2026-03-05T16:41:34 GetDocumentsAsync: doc=ТРД00008473  date=04.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=015992/26/01 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7729101200
+2026-03-05T16:41:34 GetDocumentsAsync: doc=015994/26/01 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7729101200
+2026-03-05T16:41:34 GetDocumentsAsync: doc=8470 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=9705136279
+2026-03-05T16:41:34 GetDocumentsAsync: doc=01397 date=04.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=01398 date=04.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=УТ-11543 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730654626
+2026-03-05T16:41:34 GetDocumentsAsync: doc=61 005409 / 073 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7704218694
+2026-03-05T16:41:34 GetDocumentsAsync: doc=УТ-900 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7814541629
+2026-03-05T16:41:34 GetDocumentsAsync: doc=УТ-901 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7814541629
+2026-03-05T16:41:34 GetDocumentsAsync: doc=6259/DD date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7726410031
+2026-03-05T16:41:34 GetDocumentsAsync: doc=17-0125688 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5258068806
+2026-03-05T16:41:34 GetDocumentsAsync: doc=17-0125685 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5258068806
+2026-03-05T16:41:34 GetDocumentsAsync: doc=17-0125687 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5258068806
+2026-03-05T16:41:34 GetDocumentsAsync: doc=17-0125686 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5258068806
+2026-03-05T16:41:34 GetDocumentsAsync: doc=17-0125686 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5258068806
+2026-03-05T16:41:34 GetDocumentsAsync: doc=8524 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=9705136279
+2026-03-05T16:41:34 GetDocumentsAsync: doc=14817 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5056005909
+2026-03-05T16:41:34 GetDocumentsAsync: doc=51104184 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7721793895
+2026-03-05T16:41:34 GetDocumentsAsync: doc=0VT/1387530/63134616 date=03.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=51111076 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7721793895
+2026-03-05T16:41:34 GetDocumentsAsync: doc=Г0000823162 date=03.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=000926080 date=03.03.2026 typeNamedId=ReconciliationAct SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=2534 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7714015735
+2026-03-05T16:41:34 GetDocumentsAsync: doc=Г0000037173 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T16:41:34 GetDocumentsAsync: doc=303073 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7734420298
+2026-03-05T16:41:34 GetDocumentsAsync: doc=303074 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7734420298
+2026-03-05T16:41:34 GetDocumentsAsync: doc=Г0000036801 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T16:41:34 GetDocumentsAsync: doc=0VT/1387530/63134728 date=03.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=0VT/1387530/63134728 date=03.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=0VT/1387530/63134728 date=03.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=51112739 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7721793895
+2026-03-05T16:41:34 GetDocumentsAsync: doc=Г0000037341 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T16:41:34 GetDocumentsAsync: doc=0111642534-0359 date=03.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=Г0000823181 date=03.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=Г0000036784 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T16:41:34 GetDocumentsAsync: doc=Г0000823563 date=03.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=Г0000823748 date=03.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=27727 date=03.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=316 date=02.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=26MRR042307 date=02.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7729409940
+2026-03-05T16:41:34 GetDocumentsAsync: doc=26MRR042308 date=02.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7729409940
+2026-03-05T16:41:34 GetDocumentsAsync: doc=010326-31358-лк date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=010326-29606-лс date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=010326-29853-лсп date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=010326-29283-лс date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=010326-30272-лсп date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=Г-00107766/8042 date=01.03.2026 typeNamedId=UniversalTransferDocument SellerInn=2540167061
+2026-03-05T16:41:34 GetDocumentsAsync: doc=010326-29510-лсп date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:41:34 GetDocumentsAsync: doc=010326-29509-лсп date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:41:35 GetDocumentsAsync: page=1 docsFromDiadoc=2
+2026-03-05T16:41:35 GetDocumentsAsync: doc=010326-29510-лсп date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:41:35 GetDocumentsAsync: doc=010326-29509-лсп date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T16:42:02 GetUtdItemsAsync: start
+2026-03-05T16:42:02 GetUtdItemsAsync: saved utd_last.xml to C:\Users\Orange\AppData\Local\RoomBroomChainPlugin\utd_last.xml
+2026-03-05T16:42:02 GetUtdItemsAsync: using ФНС ТаблСчФакт/СведТов format
+2026-03-05T16:42:02 GetUtdItemsAsync: parsed rows count=5
+2026-03-05T17:00:04 GetDocumentsAsync: page=0 docsFromDiadoc=84
+2026-03-05T17:00:04 GetDocumentsAsync: doc=242 date=31.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5009074246
+2026-03-05T17:00:04 GetDocumentsAsync: doc=241 date=31.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5009074246
+2026-03-05T17:00:04 GetDocumentsAsync: doc=Г0000038320 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T17:00:04 GetDocumentsAsync: doc=ПВЦБ-014894 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7707453248
+2026-03-05T17:00:04 GetDocumentsAsync: doc=Г0000824907 date=05.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=ПВЦБ-014787 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7707453248
+2026-03-05T17:00:04 GetDocumentsAsync: doc=Г0000038259 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T17:00:04 GetDocumentsAsync: doc=Г0000824839 date=05.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=Г0000038261 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T17:00:04 GetDocumentsAsync: doc=Г0000038321 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T17:00:04 GetDocumentsAsync: doc=496 date=05.03.2026 typeNamedId=ReconciliationAct SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=Г0000824841 date=05.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=61 005526 / 073 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7704218694
+2026-03-05T17:00:04 GetDocumentsAsync: doc=61 005527 / 073 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7704218694
+2026-03-05T17:00:04 GetDocumentsAsync: doc=Г0000824906 date=05.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=94 008240 / 073 date=05.03.2026 typeNamedId=UniversalCorrectionDocument SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=94 008239 / 073 date=05.03.2026 typeNamedId=UniversalCorrectionDocument SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=3654343686/3933 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7701215046
+2026-03-05T17:00:04 GetDocumentsAsync: doc=3654343685/3933 date=05.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7701215046
+2026-03-05T17:00:04 GetDocumentsAsync: doc=<no-number> date=05.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=016912697 date=04.03.2026 typeNamedId=ReconciliationAct SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=61 005311 / 073 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7704218694
+2026-03-05T17:00:04 GetDocumentsAsync: doc=61 005377 / 073 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7704218694
+2026-03-05T17:00:04 GetDocumentsAsync: doc=51121620 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7721793895
+2026-03-05T17:00:04 GetDocumentsAsync: doc=6382 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730520245
+2026-03-05T17:00:04 GetDocumentsAsync: doc=8473 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=9705136279
+2026-03-05T17:00:04 GetDocumentsAsync: doc=УТ-11540 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730654626
+2026-03-05T17:00:04 GetDocumentsAsync: doc=26MRR044579 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7729409940
+2026-03-05T17:00:04 GetDocumentsAsync: doc=6384 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730520245
+2026-03-05T17:00:04 GetDocumentsAsync: doc=26MRR044582 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7729409940
+2026-03-05T17:00:04 GetDocumentsAsync: doc=113463/4172 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7814778434
+2026-03-05T17:00:04 GetDocumentsAsync: doc=6257/DD date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7726410031
+2026-03-05T17:00:04 GetDocumentsAsync: doc=6256/DD date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7726410031
+2026-03-05T17:00:04 GetDocumentsAsync: doc=14809 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5056005909
+2026-03-05T17:00:04 GetDocumentsAsync: doc=ТРД00008473  date=04.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=015992/26/01 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7729101200
+2026-03-05T17:00:04 GetDocumentsAsync: doc=015994/26/01 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7729101200
+2026-03-05T17:00:04 GetDocumentsAsync: doc=8470 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=9705136279
+2026-03-05T17:00:04 GetDocumentsAsync: doc=01397 date=04.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=01398 date=04.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=УТ-11543 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730654626
+2026-03-05T17:00:04 GetDocumentsAsync: doc=61 005409 / 073 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7704218694
+2026-03-05T17:00:04 GetDocumentsAsync: doc=УТ-900 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7814541629
+2026-03-05T17:00:04 GetDocumentsAsync: doc=УТ-901 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7814541629
+2026-03-05T17:00:04 GetDocumentsAsync: doc=6259/DD date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7726410031
+2026-03-05T17:00:04 GetDocumentsAsync: doc=17-0125688 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5258068806
+2026-03-05T17:00:04 GetDocumentsAsync: doc=17-0125685 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5258068806
+2026-03-05T17:00:04 GetDocumentsAsync: doc=17-0125687 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5258068806
+2026-03-05T17:00:04 GetDocumentsAsync: doc=17-0125686 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5258068806
+2026-03-05T17:00:04 GetDocumentsAsync: doc=17-0125686 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5258068806
+2026-03-05T17:00:04 GetDocumentsAsync: doc=8524 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=9705136279
+2026-03-05T17:00:04 GetDocumentsAsync: doc=14817 date=04.03.2026 typeNamedId=UniversalTransferDocument SellerInn=5056005909
+2026-03-05T17:00:04 GetDocumentsAsync: doc=51104184 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7721793895
+2026-03-05T17:00:04 GetDocumentsAsync: doc=0VT/1387530/63134616 date=03.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=51111076 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7721793895
+2026-03-05T17:00:04 GetDocumentsAsync: doc=Г0000823162 date=03.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=000926080 date=03.03.2026 typeNamedId=ReconciliationAct SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=2534 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7714015735
+2026-03-05T17:00:04 GetDocumentsAsync: doc=Г0000037173 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T17:00:04 GetDocumentsAsync: doc=303073 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7734420298
+2026-03-05T17:00:04 GetDocumentsAsync: doc=303074 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7734420298
+2026-03-05T17:00:04 GetDocumentsAsync: doc=Г0000036801 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T17:00:04 GetDocumentsAsync: doc=0VT/1387530/63134728 date=03.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=0VT/1387530/63134728 date=03.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=0VT/1387530/63134728 date=03.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=51112739 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7721793895
+2026-03-05T17:00:04 GetDocumentsAsync: doc=Г0000037341 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T17:00:04 GetDocumentsAsync: doc=0111642534-0359 date=03.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=Г0000823181 date=03.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=Г0000036784 date=03.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7730709280
+2026-03-05T17:00:04 GetDocumentsAsync: doc=Г0000823563 date=03.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=Г0000823748 date=03.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=27727 date=03.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=316 date=02.03.2026 typeNamedId=ProformaInvoice SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=26MRR042307 date=02.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7729409940
+2026-03-05T17:00:04 GetDocumentsAsync: doc=26MRR042308 date=02.03.2026 typeNamedId=UniversalTransferDocument SellerInn=7729409940
+2026-03-05T17:00:04 GetDocumentsAsync: doc=010326-31358-лк date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=010326-29606-лс date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=010326-29853-лсп date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=010326-29283-лс date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=010326-30272-лсп date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=Г-00107766/8042 date=01.03.2026 typeNamedId=UniversalTransferDocument SellerInn=2540167061
+2026-03-05T17:00:04 GetDocumentsAsync: doc=010326-29510-лсп date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T17:00:04 GetDocumentsAsync: doc=010326-29509-лсп date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T17:00:05 GetDocumentsAsync: page=1 docsFromDiadoc=2
+2026-03-05T17:00:05 GetDocumentsAsync: doc=010326-29510-лсп date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
+2026-03-05T17:00:05 GetDocumentsAsync: doc=010326-29509-лсп date=01.03.2026 typeNamedId=Nonformalized SellerInn=<null>
