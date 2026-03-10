@@ -81,3 +81,4 @@ RoomBroomChainPlugin/
 - BoxId из API: убирать суффикс `@diadoc.ru` через `StripBoxIdDomain`
 - DateEdit: НЕ добавлять `Buttons.AddRange` (дефолт содержит Combo-кнопку). LabelControl рядом — задавать явный `Size`
 - Контрагенты: пагинация обязательна (afterIndexKey), иначе только первые 100
+- **«Серые квадритики»:** для иконок/подписей внутри кнопок и панелей всегда используем `LabelControl` с `AutoSizeMode = None`, явным `Size` и `Margin`, `BackColor = SystemColors.Control` и `BringToFront()`. Все подобные визуальные артефакты (серые квадраты, наезды текста) побеждаем через явную разметку: фиксируем размеры, отступы и выравнивание так, чтобы элементы не перекрывали друг друга.

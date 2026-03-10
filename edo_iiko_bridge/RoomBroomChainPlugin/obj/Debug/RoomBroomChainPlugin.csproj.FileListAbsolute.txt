@@ -1,0 +1,12 @@
+C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\bin\Debug\RoomBroomChainPlugin.dll
+C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\bin\Debug\RoomBroomChainPlugin.pdb
+C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\bin\Debug\Newtonsoft.Json.dll
+C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Debug\RoomBroomChainPlugin.csproj.AssemblyReference.cache
+C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Debug\RoomBroomChainPlugin.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Debug\RoomBroomChainPlugin.AssemblyInfoInputs.cache
+C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Debug\RoomBroomChainPlugin.AssemblyInfo.cs
+C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Debug\RoomBroomChainPlugin.csproj.CoreCompileInputs.cache
+C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Debug\RoomBroomChainPlugin.sourcelink.json
+C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Debug\RoomBroo.5800E919.Up2Date
+C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Debug\RoomBroomChainPlugin.dll
+C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Debug\RoomBroomChainPlugin.pdb

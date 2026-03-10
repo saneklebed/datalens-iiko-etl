@@ -56,6 +56,8 @@ namespace Pages
         private LabelControl _lblUploadIcon;
         private SimpleButton _btnRefreshMappings;
         private CheckEdit _chkCreateWithPosting;
+        private LabelControl _lblInvoiceTotal;
+        private LabelControl _lblInvoiceTotalVat;
         private ComboBoxEdit _storeCombo;
         private DateEdit _incomingDateEdit;
         private GridControl _detailsGrid;
@@ -273,8 +275,9 @@ namespace Pages
             _batchStoreCombo = new ComboBoxEdit { Width = 220 };
             var batchFlow = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight, WrapContents = true };
             batchFlow.Controls.Add(_btnBatchSignAndUpload);
-            batchFlow.Controls.Add(_btnBatchUpload);
+            // Порядок: сначала «Подписать и выгрузить», затем «Отказать», потом «Выгрузить».
             batchFlow.Controls.Add(_btnBatchReject);
+            batchFlow.Controls.Add(_btnBatchUpload);
             batchFlow.Controls.Add(_lblBatchStore);
             batchFlow.Controls.Add(_batchStoreCombo);
             batchFlow.Controls.Add(_lblBatchHint);
@@ -506,16 +509,73 @@ namespace Pages
             {
                 Dock = DockStyle.Bottom,
                 Height = 36,
+                // Правый отступ оставляем небольшим: суммы смещаем правее, но так, чтобы обе подписи полностью влезали.
                 Padding = new Padding(4, 4, 40, 4)
             };
-            var bottomFlow = new FlowLayoutPanel
+            // Нижний блок делим на две явные панели:
+            // - слева чекбокс «С проведением»;
+            // - справа суммы под колонками «Сумма» и «Сумма НДС».
+            // Явные размеры и координаты надёжнее auto-layout и помогают избежать «серых квадратиков».
+            var bottomLeftPanel = new PanelControl
+            {
+                Dock = DockStyle.Left,
+                Width = 150,
+                BorderStyle = BorderStyles.NoBorder
+            };
+            _chkCreateWithPosting.Location = new Point(0, 6);
+            _chkCreateWithPosting.Margin = new Padding(0);
+            bottomLeftPanel.Controls.Add(_chkCreateWithPosting);
+
+            var bottomRightPanel = new PanelControl
             {
                 Dock = DockStyle.Right,
-                FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = false
+                Width = 340,
+                BorderStyle = BorderStyles.NoBorder
             };
-            bottomFlow.Controls.Add(_chkCreateWithPosting);
-            bottomPanel.Controls.Add(bottomFlow);
+            _lblInvoiceTotal = new LabelControl
+            {
+                AutoSizeMode = LabelAutoSizeMode.None,
+                Size = new Size(170, 22),
+                Location = new Point(0, 6),
+                Margin = new Padding(0),
+                Text = string.Empty,
+                Appearance =
+                {
+                    Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                    BackColor = SystemColors.Control,
+                    Options = { UseBackColor = true },
+                    TextOptions =
+                    {
+                        HAlignment = DevExpress.Utils.HorzAlignment.Near,
+                        VAlignment = DevExpress.Utils.VertAlignment.Center
+                    }
+                }
+            };
+            _lblInvoiceTotalVat = new LabelControl
+            {
+                AutoSizeMode = LabelAutoSizeMode.None,
+                Size = new Size(150, 22),
+                Location = new Point(180, 6),
+                Margin = new Padding(0),
+                Text = string.Empty,
+                Appearance =
+                {
+                    Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                    BackColor = SystemColors.Control,
+                    Options = { UseBackColor = true },
+                    TextOptions =
+                    {
+                        HAlignment = DevExpress.Utils.HorzAlignment.Near,
+                        VAlignment = DevExpress.Utils.VertAlignment.Center
+                    }
+                }
+            };
+            bottomRightPanel.Controls.Add(_lblInvoiceTotal);
+            bottomRightPanel.Controls.Add(_lblInvoiceTotalVat);
+            _lblInvoiceTotal.BringToFront();
+            _lblInvoiceTotalVat.BringToFront();
+            bottomPanel.Controls.Add(bottomRightPanel);
+            bottomPanel.Controls.Add(bottomLeftPanel);
 
             _detailsPanel.Controls.Add(_detailsGrid);
             _detailsPanel.Controls.Add(bottomPanel);
@@ -942,6 +1002,15 @@ namespace Pages
                     $"Номер и дата документа: {docNumber} от {docDate}";
 
                 _currentDocument = row;
+                if (_lblInvoiceTotal != null || _lblInvoiceTotalVat != null)
+                {
+                    var total = (row.TotalAmount ?? string.Empty).Trim();
+                    var vat = (row.TotalVat ?? string.Empty).Trim();
+                    if (_lblInvoiceTotal != null)
+                        _lblInvoiceTotal.Text = string.IsNullOrEmpty(total) ? string.Empty : $"Итого: {total}";
+                    if (_lblInvoiceTotalVat != null)
+                        _lblInvoiceTotalVat.Text = string.IsNullOrEmpty(vat) ? string.Empty : $"НДС: {vat}";
+                }
                 _currentItems = items ?? Array.Empty<UtdItemRow>();
 
                 // Единицы измерения поставщика делаем строчными
@@ -1124,9 +1193,11 @@ namespace Pages
         private void UpdateUploadButtonsEnabled()
         {
             var docFinalized = IsDocumentFinalized();
-            var enabled = !docFinalized && _currentAllItemsMapped && _currentItems != null && _currentItems.Length > 0;
-            _btnUploadOnly.Enabled = enabled;
-            _btnSignAndUpload.Enabled = enabled;
+            var hasMappedItems = _currentAllItemsMapped && _currentItems != null && _currentItems.Length > 0;
+            var alreadyInIiko = IsCurrentDocumentAlreadyInIiko();
+            // Подписанный документ можно повторно выгрузить в iiko, если накладная была удалена из iiko.
+            _btnUploadOnly.Enabled = hasMappedItems && !alreadyInIiko;
+            _btnSignAndUpload.Enabled = !docFinalized && hasMappedItems && !alreadyInIiko;
             _btnReject.Enabled = !docFinalized;
             SyncIconLabelsAppearance();
         }
@@ -1163,6 +1234,14 @@ namespace Pages
             if (s.IndexOf("отказ", StringComparison.OrdinalIgnoreCase) >= 0) return true;
             if (s.IndexOf("отклон", StringComparison.OrdinalIgnoreCase) >= 0) return true;
             return false;
+        }
+
+        private bool IsCurrentDocumentAlreadyInIiko()
+        {
+            if (_currentDocument == null)
+                return false;
+            var s = (_currentDocument.IikoStatus ?? "").Trim().ToLowerInvariant();
+            return s.StartsWith("внесено в iiko");
         }
 
         /// <summary>
@@ -1279,8 +1358,12 @@ namespace Pages
 
                 itemEl.Add(new XElement("amount", it.Quantity.ToString(CultureInfo.InvariantCulture)));
 
-                string nativeProductGuid = null;
-                if (supplierCodeToNativeProductGuid != null)
+                // Сначала используем уже найденную привязку из текущей строки.
+                // Это важно: на экране маппинг мог успешно определиться по прайс-листу,
+                // а повторный поиск только по коду/артикулу при выгрузке мог не сработать
+                // из-за формата значения в УПД. Повторный поиск оставляем только как fallback.
+                string nativeProductGuid = string.IsNullOrWhiteSpace(it.Product) ? null : it.Product.Trim();
+                if (string.IsNullOrWhiteSpace(nativeProductGuid) && supplierCodeToNativeProductGuid != null)
                 {
                     var code = (it.ItemVendorCode ?? "").Trim();
                     if (!string.IsNullOrEmpty(code) && supplierCodeToNativeProductGuid.TryGetValue(code, out var guid))
