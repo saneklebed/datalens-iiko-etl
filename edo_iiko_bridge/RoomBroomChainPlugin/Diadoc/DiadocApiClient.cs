@@ -1225,6 +1225,9 @@ namespace RoomBroomChainPlugin.Diadoc
                     return Array.Empty<UtdItemRow>();
                 }
 
+                // Источники ItemVendorCode/ItemArticle для маппинга с прайс-листом iiko:
+                // - UTD Table/Item: ItemVendorCode=Item@ItemVendorCode, ItemArticle=Item@ItemArticle (могут различаться).
+                // - ФНС 5.02/5.03: оба из ДопСведТов@КодТов (различие теряется).
                 // Вариант 1: UniversalTransferDocument (Table/Item)
                 System.Xml.Linq.XElement table = null;
                 foreach (var el in root.Descendants())

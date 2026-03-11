@@ -33,6 +33,8 @@ namespace RoomBroomChainPlugin.Iiko
         public string SupplierProductNum { get; set; }  // артикул у поставщика
         public string SupplierProductCode { get; set; } // код у поставщика
         public string ContainerName { get; set; }       // наименование фасовки (container/name)
+        public string ContainerId { get; set; }         // guid фасовки (container/id или containerId)
+        public string AmountUnitId { get; set; }        // guid базовой единицы измерения
     }
 
     public class DocumentValidationResult
@@ -129,6 +131,30 @@ namespace RoomBroomChainPlugin.Iiko
             catch
             {
                 // Лог не должен ломать работу плагина.
+            }
+        }
+
+        /// <summary>Сохраняет исходящий XML приходной накладной в dist/xml для диагностики.</summary>
+        public static void SaveOutgoingXmlForDebug(string docNumber, string xml)
+        {
+            if (string.IsNullOrWhiteSpace(xml))
+                return;
+            try
+            {
+                var baseDir = GetImportDebugDirectory();
+                var xmlDir = Path.Combine(baseDir, "xml");
+                Directory.CreateDirectory(xmlDir);
+                var safeNum = string.IsNullOrWhiteSpace(docNumber)
+                    ? "unknown"
+                    : string.Join("_", (docNumber ?? "").Split(Path.GetInvalidFileNameChars()));
+                var fileName = "incomingInvoice_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + "_" + safeNum + ".xml";
+                var path = Path.Combine(xmlDir, fileName);
+                File.WriteAllText(path, xml, Encoding.UTF8);
+                WriteImportDebugLog("Outgoing XML saved: " + path);
+            }
+            catch (Exception ex)
+            {
+                WriteImportDebugLog("SaveOutgoingXmlForDebug failed: " + ex.Message);
             }
         }
 
@@ -540,12 +566,16 @@ namespace RoomBroomChainPlugin.Iiko
         /// Прайс-лист поставщика: GET /resto/api/suppliers/{supplierIdOrCode}/pricelist.
         /// Сопоставление «код/артикул у поставщика» → «наш товар» (nativeProduct guid) для привязки строк накладной к номенклатуре iiko.
         /// </summary>
-        public async Task<List<SupplierPricelistItem>> GetSupplierPricelistAsync(string supplierIdOrCode)
+        /// <param name="supplierIdOrCode">ID или код поставщика.</param>
+        /// <param name="date">Опционально: дата документа в формате dd.MM.yyyy — для стабильного чтения прайс-листа на дату накладной.</param>
+        public async Task<List<SupplierPricelistItem>> GetSupplierPricelistAsync(string supplierIdOrCode, string date = null)
         {
             if (string.IsNullOrWhiteSpace(supplierIdOrCode))
                 return new List<SupplierPricelistItem>();
 
             var path = "api/suppliers/" + Uri.EscapeDataString(supplierIdOrCode.Trim()) + "/pricelist";
+            if (!string.IsNullOrWhiteSpace(date))
+                path += "?date=" + Uri.EscapeDataString(date.Trim());
             var raw = await GetAsync(path).ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(raw))
                 return new List<SupplierPricelistItem>();
@@ -568,9 +598,18 @@ namespace RoomBroomChainPlugin.Iiko
                     var supplierProductNum = (string)el.Element("supplierProductNum") ?? (string)el.Element("SupplierProductNum");
                     var supplierProductCode = (string)el.Element("supplierProductCode") ?? (string)el.Element("SupplierProductCode");
                     var containerEl = el.Element("container") ?? el.Element("Container");
+                    var amountUnitEl = el.Element("amountUnit") ?? el.Element("AmountUnit");
                     var containerName = containerEl != null
                         ? ((string)containerEl.Element("name") ?? (string)containerEl.Element("Name"))
                         : null;
+                    var containerId = (string)el.Element("containerId") ?? (string)el.Element("ContainerId");
+                    if (string.IsNullOrWhiteSpace(containerId) && containerEl != null)
+                        containerId = (string)containerEl.Element("id") ?? (string)containerEl.Element("Id");
+                    var amountUnitId = (string)el.Element("amountUnit") ?? (string)el.Element("AmountUnit");
+                    if (!string.IsNullOrWhiteSpace(amountUnitId) && amountUnitId.IndexOf("<", StringComparison.Ordinal) >= 0)
+                        amountUnitId = null;
+                    if (string.IsNullOrWhiteSpace(amountUnitId) && amountUnitEl != null)
+                        amountUnitId = (string)amountUnitEl.Element("id") ?? (string)amountUnitEl.Element("Id");
                     if (string.IsNullOrWhiteSpace(nativeProduct) && string.IsNullOrWhiteSpace(nativeProductNum))
                         continue;
 
@@ -581,7 +620,9 @@ namespace RoomBroomChainPlugin.Iiko
                         NativeProductName = nativeProductName ?? "",
                         SupplierProductNum = supplierProductNum ?? "",
                         SupplierProductCode = supplierProductCode ?? "",
-                        ContainerName = containerName ?? ""
+                        ContainerName = containerName ?? "",
+                        ContainerId = containerId ?? "",
+                        AmountUnitId = amountUnitId ?? ""
                     });
                 }
                 IikoLog.Write("GetSupplierPricelistAsync: loaded " + result.Count + " items for supplier " + supplierIdOrCode);

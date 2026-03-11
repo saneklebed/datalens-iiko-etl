@@ -1,10 +1,11 @@
 {
   "version": 2,
-  "dgSpecHash": "zRcEqZp/3Rg=",
+  "dgSpecHash": "kQvmiKpNTvE=",
   "success": true,
   "projectFilePath": "C:\\Users\\Orange\\Documents\\GitHub\\datalens-iiko-etl\\edo_iiko_bridge\\RoomBroomChainPlugin\\RoomBroomChainPlugin.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Orange\\.nuget\\packages\\confuser.msbuild\\1.5.0\\confuser.msbuild.1.5.0.nupkg.sha512",
+    "C:\\Users\\Orange\\.nuget\\packages\\dnlib\\3.3.2\\dnlib.3.3.2.nupkg.sha512",
     "C:\\Users\\Orange\\.nuget\\packages\\microsoft.netframework.referenceassemblies\\1.0.3\\microsoft.netframework.referenceassemblies.1.0.3.nupkg.sha512",
     "C:\\Users\\Orange\\.nuget\\packages\\microsoft.netframework.referenceassemblies.net48\\1.0.3\\microsoft.netframework.referenceassemblies.net48.1.0.3.nupkg.sha512",
     "C:\\Users\\Orange\\.nuget\\packages\\newtonsoft.json\\13.0.3\\newtonsoft.json.13.0.3.nupkg.sha512"

@@ -1029,6 +1029,9 @@ namespace Pages
                 if (_detailsView.Columns["Product"] != null) _detailsView.Columns["Product"].Visible = false;
                 if (_detailsView.Columns["Gtin"] != null) _detailsView.Columns["Gtin"].Visible = false;
                 if (_detailsView.Columns["ItemAdditionalInfo"] != null) _detailsView.Columns["ItemAdditionalInfo"].Visible = false;
+                if (_detailsView.Columns["IikoProductArticle"] != null) _detailsView.Columns["IikoProductArticle"].Visible = false;
+                if (_detailsView.Columns["ContainerId"] != null) _detailsView.Columns["ContainerId"].Visible = false;
+                if (_detailsView.Columns["AmountUnitId"] != null) _detailsView.Columns["AmountUnitId"].Visible = false;
                 // Артикул дублирует «Код поставщика» — не показываем при провале в накладную
                 if (_detailsView.Columns["ItemArticle"] != null) _detailsView.Columns["ItemArticle"].Visible = false;
 
@@ -1141,7 +1144,8 @@ namespace Pages
             if (sup != null && !string.IsNullOrWhiteSpace(sup.Code))
                 supplierPricelistKey = sup.Code;
 
-            var pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierPricelistKey).ConfigureAwait(true);
+            var pricelistDate = NormalizeDateForIikoDocument(_currentDocument.DocumentDate);
+            var pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierPricelistKey, pricelistDate).ConfigureAwait(true);
             if (pricelist == null || pricelist.Count == 0)
             {
                 IikoRestoClient.WriteImportDebugLog("EnsureMappings: doc=" + docNumber + " supplierKey=" + supplierPricelistKey + " -> Прайс-лист пустой или не получен.");
@@ -1149,7 +1153,6 @@ namespace Pages
             }
 
             var codeToProduct = new Dictionary<string, SupplierPricelistItem>(StringComparer.OrdinalIgnoreCase);
-            var nameToProduct = new Dictionary<string, SupplierPricelistItem>(StringComparer.OrdinalIgnoreCase);
             foreach (var row in pricelist)
             {
                 if (string.IsNullOrWhiteSpace(row.NativeProduct))
@@ -1158,21 +1161,20 @@ namespace Pages
                     codeToProduct[row.SupplierProductNum.Trim()] = row;
                 if (!string.IsNullOrWhiteSpace(row.SupplierProductCode))
                     codeToProduct[row.SupplierProductCode.Trim()] = row;
-                var nativeName = (row.NativeProductName ?? "").Trim();
-                if (!string.IsNullOrEmpty(nativeName) && !nameToProduct.ContainsKey(nativeName))
-                    nameToProduct[nativeName] = row;
             }
 
             IikoRestoClient.WriteImportDebugLog("EnsureMappings: doc=" + docNumber + " items=" + _currentItems.Length
-                                               + " pricelistByCode=" + codeToProduct.Count
-                                               + " pricelistByName=" + nameToProduct.Count);
+                                               + " pricelistByCode=" + codeToProduct.Count);
 
             foreach (var it in _currentItems)
             {
                 // Сбрасываем предыдущую привязку, чтобы не тянуть старые данные между накладными.
                 it.Product = null;
                 it.IikoProductName = null;
+                it.IikoProductArticle = null;
                 it.Unit = null;
+                it.ContainerId = null;
+                it.AmountUnitId = null;
 
                 var code = (it.ItemVendorCode ?? "").Trim();
                 var article = (it.ItemArticle ?? "").Trim();
@@ -1181,26 +1183,25 @@ namespace Pages
                 SupplierPricelistItem mapped = null;
                 string mappingSource = "none";
 
+                // Поиск привязки жёстко ограничиваем только артикулом у поставщика.
+                // Это позволяет использовать его как уникальный ключ и избегать
+                // неожиданных совпадений по наименованию.
                 if (!string.IsNullOrEmpty(code) && codeToProduct.TryGetValue(code, out mapped))
                 {
-                    mappingSource = "code";
-                }
-                else if (!string.IsNullOrEmpty(article) && codeToProduct.TryGetValue(article, out mapped))
-                {
-                    mappingSource = "article";
-                }
-                else if (!string.IsNullOrEmpty(supplierName) && nameToProduct.TryGetValue(supplierName, out mapped))
-                {
-                    // Фолбэк: пробуем подобрать по наименованию нашего товара в iiko.
-                    mappingSource = "name";
+                    mappingSource = "vendorCode";
                 }
 
                 if (mapped != null)
                 {
                     it.Product = mapped.NativeProduct;
+                    it.IikoProductArticle = mapped.NativeProductNum;
                     it.IikoProductName = mapped.NativeProductName;
                     if (!string.IsNullOrWhiteSpace(mapped.ContainerName))
                         it.Unit = mapped.ContainerName;
+                    if (!string.IsNullOrWhiteSpace(mapped.ContainerId))
+                        it.ContainerId = mapped.ContainerId;
+                    if (!string.IsNullOrWhiteSpace(mapped.AmountUnitId))
+                        it.AmountUnitId = mapped.AmountUnitId;
                 }
 
                 var logLine = "EnsureMappings.Item: doc=" + docNumber
@@ -1210,7 +1211,11 @@ namespace Pages
                               + " article=\"" + article + "\""
                               + " mappingSource=" + mappingSource
                               + " mappedProduct=" + (it.Product ?? "<null>")
-                              + " mappedName=\"" + (it.IikoProductName ?? "<null>") + "\"";
+                              + " mappedArticle=\"" + (it.IikoProductArticle ?? "<null>") + "\""
+                              + " mappedName=\"" + (it.IikoProductName ?? "<null>") + "\""
+                              + " containerId=" + (it.ContainerId ?? "<null>")
+                              + " amountUnitId=" + (it.AmountUnitId ?? "<null>")
+                              + " containerName=\"" + (it.Unit ?? "<null>") + "\"";
                 IikoRestoClient.WriteImportDebugLog(logLine);
             }
 
@@ -1371,10 +1376,29 @@ namespace Pages
             return date;
         }
 
-        /// <param name="supplierCodeToNativeProductGuid">Маппинг «код/артикул поставщика» → guid нашего товара в iiko (из прайс-листа поставщика).</param>
+        private static decimal? TryCalculateVatPercent(UtdItemRow item)
+        {
+            if (item == null)
+                return null;
+            if (item.Subtotal <= 0m || item.Vat < 0m)
+                return null;
+            if (item.Vat == 0m)
+                return 0m;
+
+            var subtotalWithoutVat = item.Subtotal - item.Vat;
+            if (subtotalWithoutVat <= 0m)
+                return null;
+
+            return decimal.Round(item.Vat * 100m / subtotalWithoutVat, 3, MidpointRounding.AwayFromZero);
+        }
+
+        /// <summary>
+        /// Строит XML приходной накладной для iiko. Использует только уже вычисленные привязки (it.Product),
+        /// без повторного поиска по прайс-листу — источник истины: EnsureMappingsForCurrentDocumentAsync.
+        /// </summary>
         /// <param name="createWithPosting">Если true, в XML добавляется проведение документа (conducted).</param>
         private string BuildIncomingInvoiceXml(DiadocDocumentRow doc, UtdItemRow[] items, string supplierId, string storeId,
-            Dictionary<string, string> supplierCodeToNativeProductGuid = null, bool createWithPosting = false,
+            bool createWithPosting = false,
             string customDateIncoming = null)
         {
             var xDoc = new XDocument();
@@ -1386,56 +1410,72 @@ namespace Pages
             var itemsEl = new XElement("items");
             root.Add(itemsEl);
 
-            foreach (var it in items ?? Array.Empty<UtdItemRow>())
+            var itemsArr = items ?? Array.Empty<UtdItemRow>();
+            IikoRestoClient.WriteImportDebugLog("BuildIncomingInvoiceXml: doc=" + (doc.DocumentNumber ?? "<no-number>")
+                + " supplierId=" + (supplierId ?? "<null>")
+                + " storeId=" + (storeId ?? "<null>")
+                + " itemsCount=" + itemsArr.Length
+                + " createWithPosting=" + createWithPosting);
+
+            foreach (var it in itemsArr)
             {
                 var itemEl = new XElement("item");
                 itemsEl.Add(itemEl);
 
                 itemEl.Add(new XElement("amount", it.Quantity.ToString(CultureInfo.InvariantCulture)));
 
-                // Сначала используем уже найденную привязку из текущей строки.
-                // Это важно: на экране маппинг мог успешно определиться по прайс-листу,
-                // а повторный поиск только по коду/артикулу при выгрузке мог не сработать
-                // из-за формата значения в УПД. Повторный поиск оставляем только как fallback.
+                var vendorCode = (it.ItemVendorCode ?? "").Trim();
+                var article = (it.ItemArticle ?? "").Trim();
+                var supplierName = (it.SupplierProductName ?? "").Trim();
+
+                // Единственный источник productGuid — уже вычисленная привязка в EnsureMappingsForCurrentDocumentAsync.
                 string nativeProductGuid = string.IsNullOrWhiteSpace(it.Product) ? null : it.Product.Trim();
-                if (string.IsNullOrWhiteSpace(nativeProductGuid) && supplierCodeToNativeProductGuid != null)
-                {
-                    var code = (it.ItemVendorCode ?? "").Trim();
-                    if (!string.IsNullOrEmpty(code) && supplierCodeToNativeProductGuid.TryGetValue(code, out var guid))
-                        nativeProductGuid = guid;
-                    if (string.IsNullOrEmpty(nativeProductGuid))
-                    {
-                        code = (it.ItemArticle ?? "").Trim();
-                        if (!string.IsNullOrEmpty(code) && supplierCodeToNativeProductGuid.TryGetValue(code, out var g))
-                            nativeProductGuid = g;
-                    }
-                }
                 if (!string.IsNullOrWhiteSpace(nativeProductGuid))
                     itemEl.Add(new XElement("product", nativeProductGuid));
-                if (!string.IsNullOrWhiteSpace(it.ItemArticle))
-                    itemEl.Add(new XElement("productArticle", it.ItemArticle));
-                if (!string.IsNullOrWhiteSpace(it.ItemVendorCode))
-                    itemEl.Add(new XElement("supplierProductArticle", it.ItemVendorCode));
+
+                // Во все доступные поля кладём артикул и наименование поставщика,
+                // чтобы максимум информации из ЭДО доехало до iiko.
+                if (!string.IsNullOrWhiteSpace(it.IikoProductArticle))
+                    itemEl.Add(new XElement("productArticle", it.IikoProductArticle));
+
+                if (!string.IsNullOrWhiteSpace(vendorCode))
+                {
+                    itemEl.Add(new XElement("supplierProductArticle", vendorCode));
+                    itemEl.Add(new XElement("code", vendorCode));
+                }
 
                 itemEl.Add(new XElement("num", it.LineIndex));
+
+                if (!string.IsNullOrWhiteSpace(it.ContainerId))
+                    itemEl.Add(new XElement("containerId", it.ContainerId));
+                if (!string.IsNullOrWhiteSpace(it.AmountUnitId))
+                    itemEl.Add(new XElement("amountUnit", it.AmountUnitId));
 
                 if (!string.IsNullOrWhiteSpace(storeId))
                     itemEl.Add(new XElement("store", storeId));
 
                 itemEl.Add(new XElement("price", it.Price.ToString(CultureInfo.InvariantCulture)));
                 itemEl.Add(new XElement("sum", it.Subtotal.ToString(CultureInfo.InvariantCulture)));
+                var vatPercent = TryCalculateVatPercent(it);
+                if (vatPercent.HasValue)
+                    itemEl.Add(new XElement("vatPercent", vatPercent.Value.ToString(CultureInfo.InvariantCulture)));
+                itemEl.Add(new XElement("vatSum", it.Vat.ToString(CultureInfo.InvariantCulture)));
                 itemEl.Add(new XElement("actualAmount", it.Quantity.ToString(CultureInfo.InvariantCulture)));
 
                 var logLine = "BuildIncomingInvoiceXml.Item: doc=" + (doc.DocumentNumber ?? "<no-number>")
                               + " line=" + it.LineIndex
-                              + " supplierName=\"" + (it.SupplierProductName ?? "").Trim() + "\""
-                              + " code=\"" + (it.ItemVendorCode ?? "").Trim() + "\""
-                              + " article=\"" + (it.ItemArticle ?? "").Trim() + "\""
+                              + " supplierName=\"" + supplierName + "\""
+                              + " code=\"" + vendorCode + "\""
+                              + " article=\"" + article + "\""
                               + " productGuid=" + (nativeProductGuid ?? "<null>")
+                              + " productArticle=\"" + (it.IikoProductArticle ?? "<null>") + "\""
+                              + " containerId=" + (it.ContainerId ?? "<null>")
+                              + " amountUnitId=" + (it.AmountUnitId ?? "<null>")
                               + " qty=" + it.Quantity.ToString(CultureInfo.InvariantCulture)
                               + " price=" + it.Price.ToString(CultureInfo.InvariantCulture)
                               + " sum=" + it.Subtotal.ToString(CultureInfo.InvariantCulture)
-                              + " vat=" + it.Vat.ToString(CultureInfo.InvariantCulture);
+                              + " vat=" + it.Vat.ToString(CultureInfo.InvariantCulture)
+                              + " vatPercent=" + (vatPercent.HasValue ? vatPercent.Value.ToString(CultureInfo.InvariantCulture) : "<null>");
                 IikoRestoClient.WriteImportDebugLog(logLine);
             }
 
@@ -1518,37 +1558,15 @@ namespace Pages
 
             try
             {
-                var supplierPricelistKey = _currentDocument.IikoSupplierId;
-                if (!string.IsNullOrWhiteSpace(supplierPricelistKey))
-                {
-                    var sup = _suppliers?.FirstOrDefault(s => s.Id == _currentDocument.IikoSupplierId);
-                    if (sup != null && !string.IsNullOrWhiteSpace(sup.Code))
-                        supplierPricelistKey = sup.Code;
-                }
                 IikoRestoClient.WriteImportDebugLog("storeId=" + (storeId ?? "<null>") + " supplierId=" + (_currentDocument.IikoSupplierId ?? "<null>"));
-
-                var pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierPricelistKey).ConfigureAwait(true);
-                var supplierCodeToNativeGuid = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                if (pricelist != null)
-                {
-                    foreach (var row in pricelist)
-                    {
-                        if (!string.IsNullOrWhiteSpace(row.NativeProduct))
-                        {
-                            if (!string.IsNullOrWhiteSpace(row.SupplierProductNum))
-                                supplierCodeToNativeGuid[row.SupplierProductNum.Trim()] = row.NativeProduct;
-                            if (!string.IsNullOrWhiteSpace(row.SupplierProductCode))
-                                supplierCodeToNativeGuid[row.SupplierProductCode.Trim()] = row.NativeProduct;
-                        }
-                    }
-                }
 
                 // Используем галочку на форме как источник правды; она синхронизирует значение в ConfigStore.
                 var createWithPosting = _chkCreateWithPosting != null && _chkCreateWithPosting.Checked;
                 string customDate = null;
                 if (_incomingDateEdit != null && _incomingDateEdit.EditValue is DateTime dtIncoming)
                     customDate = dtIncoming.ToString("dd.MM.yyyy");
-                var xml = BuildIncomingInvoiceXml(_currentDocument, _currentItems, _currentDocument.IikoSupplierId, storeId, supplierCodeToNativeGuid, createWithPosting, customDate);
+                var xml = BuildIncomingInvoiceXml(_currentDocument, _currentItems, _currentDocument.IikoSupplierId, storeId, createWithPosting, customDate);
+                IikoRestoClient.SaveOutgoingXmlForDebug(_currentDocument.DocumentNumber ?? "unknown", xml);
                 var result = await _iikoClient.ImportIncomingInvoiceAsync(xml).ConfigureAwait(true);
 
                 var valid = result.Valid == true;
@@ -1849,26 +1867,8 @@ namespace Pages
                 return false;
             try
             {
-                var supplierPricelistKey = doc.IikoSupplierId;
-                var sup = _suppliers?.FirstOrDefault(s => s.Id == doc.IikoSupplierId);
-                if (sup != null && !string.IsNullOrWhiteSpace(sup.Code))
-                    supplierPricelistKey = sup.Code;
-                var pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierPricelistKey).ConfigureAwait(true);
-                var supplierCodeToNativeGuid = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                if (pricelist != null)
-                {
-                    foreach (var row in pricelist)
-                    {
-                        if (!string.IsNullOrWhiteSpace(row.NativeProduct))
-                        {
-                            if (!string.IsNullOrWhiteSpace(row.SupplierProductNum))
-                                supplierCodeToNativeGuid[row.SupplierProductNum.Trim()] = row.NativeProduct;
-                            if (!string.IsNullOrWhiteSpace(row.SupplierProductCode))
-                                supplierCodeToNativeGuid[row.SupplierProductCode.Trim()] = row.NativeProduct;
-                        }
-                    }
-                }
-                var xml = BuildIncomingInvoiceXml(doc, items, doc.IikoSupplierId, storeId, supplierCodeToNativeGuid, createWithPosting);
+                var xml = BuildIncomingInvoiceXml(doc, items, doc.IikoSupplierId, storeId, createWithPosting);
+                IikoRestoClient.SaveOutgoingXmlForDebug(doc.DocumentNumber ?? "unknown", xml);
                 var result = await _iikoClient.ImportIncomingInvoiceAsync(xml).ConfigureAwait(true);
                 if (result.Valid == true)
                 {
@@ -2085,10 +2085,12 @@ namespace Pages
                     if (sup != null && !string.IsNullOrWhiteSpace(sup.Code))
                         supplierPricelistKey = sup.Code;
 
-                    if (!pricelistCache.TryGetValue(supplierPricelistKey ?? string.Empty, out var pricelist))
+                    var docDate = NormalizeDateForIikoDocument(doc.DocumentDate);
+                    var cacheKey = (supplierPricelistKey ?? "") + "|" + (docDate ?? "");
+                    if (!pricelistCache.TryGetValue(cacheKey, out var pricelist))
                     {
-                        pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierPricelistKey).ConfigureAwait(true);
-                        pricelistCache[supplierPricelistKey ?? string.Empty] = pricelist ?? new List<SupplierPricelistItem>();
+                        pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierPricelistKey, docDate).ConfigureAwait(true);
+                        pricelistCache[cacheKey] = pricelist ?? new List<SupplierPricelistItem>();
                     }
                     if (pricelist == null || pricelist.Count == 0)
                     {
@@ -2107,16 +2109,16 @@ namespace Pages
                             codeToProduct[row.SupplierProductCode.Trim()] = row;
                     }
 
+                    // Те же правила, что и в EnsureMappingsForCurrentDocumentAsync: только по vendorCode.
                     var allMapped = true;
                     foreach (var it in items)
                     {
                         var code = (it.ItemVendorCode ?? "").Trim();
-                        var article = (it.ItemArticle ?? "").Trim();
-                        SupplierPricelistItem mapped;
-                        if (!string.IsNullOrEmpty(code) && codeToProduct.TryGetValue(code, out mapped)) continue;
-                        if (!string.IsNullOrEmpty(article) && codeToProduct.TryGetValue(article, out mapped)) continue;
-                        allMapped = false;
-                        break;
+                        if (string.IsNullOrEmpty(code) || !codeToProduct.TryGetValue(code, out _))
+                        {
+                            allMapped = false;
+                            break;
+                        }
                     }
 
                     doc.AllItemsMapped = allMapped;

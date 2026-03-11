@@ -23,6 +23,12 @@ namespace RoomBroomChainPlugin.Diadoc
         public string ItemAdditionalInfo { get; set; }
         /// <summary>Наименование товара в нашей системе (iiko), если найдена привязка по прайс-листу.</summary>
         public string IikoProductName { get; set; }
+        /// <summary>Артикул нашего товара в iiko (nativeProductNum).</summary>
+        public string IikoProductArticle { get; set; }
+        /// <summary>GUID фасовки из прайс-листа поставщика iiko.</summary>
+        public string ContainerId { get; set; }
+        /// <summary>GUID базовой единицы измерения из прайс-листа/карточки товара iiko.</summary>
+        public string AmountUnitId { get; set; }
     }
 }
 

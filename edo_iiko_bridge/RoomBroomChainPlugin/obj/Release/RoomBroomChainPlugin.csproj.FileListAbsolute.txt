@@ -22,3 +22,4 @@ C:\Users\sanek\Desktop\prog\datalens-iiko-etl-master\datalens-iiko-etl\edo_iiko_
 C:\Users\sanek\Desktop\prog\datalens-iiko-etl-master\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Release\RoomBroo.5800E919.Up2Date
 C:\Users\sanek\Desktop\prog\datalens-iiko-etl-master\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Release\RoomBroomChainPlugin.dll
 C:\Users\sanek\Desktop\prog\datalens-iiko-etl-master\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Release\RoomBroomChainPlugin.pdb
+C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\bin\Release\dnlib.dll

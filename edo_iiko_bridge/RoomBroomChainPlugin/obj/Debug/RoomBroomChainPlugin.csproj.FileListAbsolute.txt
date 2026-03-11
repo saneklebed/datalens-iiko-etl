@@ -10,3 +10,4 @@ C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChai
 C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Debug\RoomBroo.5800E919.Up2Date
 C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Debug\RoomBroomChainPlugin.dll
 C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\obj\Debug\RoomBroomChainPlugin.pdb
+C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\RoomBroomChainPlugin\bin\Debug\dnlib.dll
