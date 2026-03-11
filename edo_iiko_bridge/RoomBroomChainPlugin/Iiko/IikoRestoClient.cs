@@ -99,6 +99,22 @@ namespace RoomBroomChainPlugin.Iiko
             WriteImportDebugLog(message);
         }
 
+        public static string GetImportDebugDirectory()
+        {
+            try
+            {
+                var dir = Path.GetDirectoryName(ImportDebugLogPath);
+                if (!string.IsNullOrEmpty(dir))
+                    return dir;
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return AppDomain.CurrentDomain.BaseDirectory;
+        }
+
         /// <summary>Пишет строку в лог импорта (dist/iiko_import_debug.log). Вызывать из UI при выгрузке, чтобы видеть storeId и т.д.</summary>
         public static void WriteImportDebugLog(string message)
         {
@@ -586,6 +602,17 @@ namespace RoomBroomChainPlugin.Iiko
                 throw new ArgumentException("xmlBody");
 
             var raw = await PostXmlAsync("api/documents/import/incomingInvoice", xmlBody, debug: true).ConfigureAwait(false);
+            try
+            {
+                var preview = raw ?? "<null>";
+                if (preview.Length > 2000)
+                    preview = preview.Substring(0, 2000) + "...";
+                SafeDebugLog("ImportIncomingInvoiceAsync response: " + preview.Replace(Environment.NewLine, " "));
+            }
+            catch
+            {
+                // Лог не должен ломать импорт.
+            }
             var result = ParseDocumentValidationResult(raw);
             if (result != null)
                 result.RawXml = raw ?? "";

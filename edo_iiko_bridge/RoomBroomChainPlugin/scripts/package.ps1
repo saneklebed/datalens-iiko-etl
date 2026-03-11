@@ -71,27 +71,29 @@ function Pack-Zip {
 # --- Сборка и упаковка ---
 
 if ($Single) {
-  # Один ZIP по выбранной конфигурации
+  # One ZIP for selected configuration (Debug/Release)
   if ($Configuration -ne "Release") {
-    Write-Host "Внимание: для отдачи покупателю используй без -Single (два ZIP) или -Single с Release." -ForegroundColor Yellow
+    Write-Host "Warning: for customer builds use: no -Single (two ZIPs) or -Single -Configuration Release." -ForegroundColor Yellow
   }
+
   if ($canBuild) {
-    Write-Host "Building plugin ($Configuration)..." -ForegroundColor Cyan
+    Write-Host ("Building plugin (" + $Configuration + ")...") -ForegroundColor Cyan
     $dll = Build-Plugin $Configuration
   } else {
-    $dll = Join-Path $projDir "bin\$Configuration\RoomBroomChainPlugin.dll"
+    $dll = Join-Path $projDir ("bin\" + $Configuration + "\RoomBroomChainPlugin.dll")
     if (-not (Test-Path $dll)) {
-      Write-Host "Не найден Directory.Build.props и не найден DLL." -ForegroundColor Yellow
+      Write-Host "Directory.Build.props and DLL not found." -ForegroundColor Yellow
       exit 1
     }
   }
+
   $stage = New-StageDir
   Copy-ToStage $stage $Configuration
   Pack-Zip $stage 'RoomBroomChainPlugin.zip'
 } else {
-  # Два ZIP: для клиента (Release, обфусцированный) и для себя (Debug, без обфускации)
+  # Two ZIPs: Release (obfuscated) for client, Debug (plain) for developer
   if (-not $canBuild) {
-    Write-Host "Нужен Directory.Build.props для сборки обоих конфигураций. Либо используй -Single -Configuration Release." -ForegroundColor Yellow
+    Write-Host "Need Directory.Build.props to build both configurations. Or use -Single -Configuration Release." -ForegroundColor Yellow
     exit 1
   }
 

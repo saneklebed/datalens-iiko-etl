@@ -1124,6 +1124,7 @@ namespace Pages
 
         /// <summary>
         /// Загружает прайс-лист текущего поставщика и заполняет Product/IikoProductName у строк текущей накладной.
+        /// Одновременно пишет подробный лог по тому, как именно нашлась (или не нашлась) каждая строка.
         /// </summary>
         private async Task EnsureMappingsForCurrentDocumentAsync()
         {
@@ -1133,6 +1134,8 @@ namespace Pages
             if (string.IsNullOrWhiteSpace(_currentDocument.IikoSupplierId))
                 return;
 
+            var docNumber = _currentDocument.DocumentNumber ?? "<no-number>";
+
             var supplierPricelistKey = _currentDocument.IikoSupplierId;
             var sup = _suppliers?.FirstOrDefault(s => s.Id == _currentDocument.IikoSupplierId);
             if (sup != null && !string.IsNullOrWhiteSpace(sup.Code))
@@ -1140,9 +1143,13 @@ namespace Pages
 
             var pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierPricelistKey).ConfigureAwait(true);
             if (pricelist == null || pricelist.Count == 0)
+            {
+                IikoRestoClient.WriteImportDebugLog("EnsureMappings: doc=" + docNumber + " supplierKey=" + supplierPricelistKey + " -> Прайс-лист пустой или не получен.");
                 return;
+            }
 
             var codeToProduct = new Dictionary<string, SupplierPricelistItem>(StringComparer.OrdinalIgnoreCase);
+            var nameToProduct = new Dictionary<string, SupplierPricelistItem>(StringComparer.OrdinalIgnoreCase);
             foreach (var row in pricelist)
             {
                 if (string.IsNullOrWhiteSpace(row.NativeProduct))
@@ -1151,7 +1158,14 @@ namespace Pages
                     codeToProduct[row.SupplierProductNum.Trim()] = row;
                 if (!string.IsNullOrWhiteSpace(row.SupplierProductCode))
                     codeToProduct[row.SupplierProductCode.Trim()] = row;
+                var nativeName = (row.NativeProductName ?? "").Trim();
+                if (!string.IsNullOrEmpty(nativeName) && !nameToProduct.ContainsKey(nativeName))
+                    nameToProduct[nativeName] = row;
             }
+
+            IikoRestoClient.WriteImportDebugLog("EnsureMappings: doc=" + docNumber + " items=" + _currentItems.Length
+                                               + " pricelistByCode=" + codeToProduct.Count
+                                               + " pricelistByName=" + nameToProduct.Count);
 
             foreach (var it in _currentItems)
             {
@@ -1159,25 +1173,45 @@ namespace Pages
                 it.Product = null;
                 it.IikoProductName = null;
                 it.Unit = null;
+
                 var code = (it.ItemVendorCode ?? "").Trim();
+                var article = (it.ItemArticle ?? "").Trim();
+                var supplierName = (it.SupplierProductName ?? "").Trim();
+
                 SupplierPricelistItem mapped = null;
+                string mappingSource = "none";
+
                 if (!string.IsNullOrEmpty(code) && codeToProduct.TryGetValue(code, out mapped))
                 {
-                    it.Product = mapped.NativeProduct;
-                    it.IikoProductName = mapped.NativeProductName;
-                    if (!string.IsNullOrWhiteSpace(mapped.ContainerName))
-                        it.Unit = mapped.ContainerName;
-                    continue;
+                    mappingSource = "code";
+                }
+                else if (!string.IsNullOrEmpty(article) && codeToProduct.TryGetValue(article, out mapped))
+                {
+                    mappingSource = "article";
+                }
+                else if (!string.IsNullOrEmpty(supplierName) && nameToProduct.TryGetValue(supplierName, out mapped))
+                {
+                    // Фолбэк: пробуем подобрать по наименованию нашего товара в iiko.
+                    mappingSource = "name";
                 }
 
-                var article = (it.ItemArticle ?? "").Trim();
-                if (!string.IsNullOrEmpty(article) && codeToProduct.TryGetValue(article, out mapped))
+                if (mapped != null)
                 {
                     it.Product = mapped.NativeProduct;
                     it.IikoProductName = mapped.NativeProductName;
                     if (!string.IsNullOrWhiteSpace(mapped.ContainerName))
                         it.Unit = mapped.ContainerName;
                 }
+
+                var logLine = "EnsureMappings.Item: doc=" + docNumber
+                              + " line=" + it.LineIndex
+                              + " supplierName=\"" + supplierName + "\""
+                              + " code=\"" + code + "\""
+                              + " article=\"" + article + "\""
+                              + " mappingSource=" + mappingSource
+                              + " mappedProduct=" + (it.Product ?? "<null>")
+                              + " mappedName=\"" + (it.IikoProductName ?? "<null>") + "\"";
+                IikoRestoClient.WriteImportDebugLog(logLine);
             }
 
             // Для незамапленных строк отображаем плейсхолдер "[выберите]".
@@ -1188,6 +1222,7 @@ namespace Pages
             }
 
             _currentAllItemsMapped = _currentItems.All(it => !string.IsNullOrWhiteSpace(it.Product));
+            IikoRestoClient.WriteImportDebugLog("EnsureMappings: doc=" + docNumber + " allMapped=" + _currentAllItemsMapped);
         }
 
         private void UpdateUploadButtonsEnabled()
@@ -1390,6 +1425,18 @@ namespace Pages
                 itemEl.Add(new XElement("price", it.Price.ToString(CultureInfo.InvariantCulture)));
                 itemEl.Add(new XElement("sum", it.Subtotal.ToString(CultureInfo.InvariantCulture)));
                 itemEl.Add(new XElement("actualAmount", it.Quantity.ToString(CultureInfo.InvariantCulture)));
+
+                var logLine = "BuildIncomingInvoiceXml.Item: doc=" + (doc.DocumentNumber ?? "<no-number>")
+                              + " line=" + it.LineIndex
+                              + " supplierName=\"" + (it.SupplierProductName ?? "").Trim() + "\""
+                              + " code=\"" + (it.ItemVendorCode ?? "").Trim() + "\""
+                              + " article=\"" + (it.ItemArticle ?? "").Trim() + "\""
+                              + " productGuid=" + (nativeProductGuid ?? "<null>")
+                              + " qty=" + it.Quantity.ToString(CultureInfo.InvariantCulture)
+                              + " price=" + it.Price.ToString(CultureInfo.InvariantCulture)
+                              + " sum=" + it.Subtotal.ToString(CultureInfo.InvariantCulture)
+                              + " vat=" + it.Vat.ToString(CultureInfo.InvariantCulture);
+                IikoRestoClient.WriteImportDebugLog(logLine);
             }
 
             var dateIncoming = !string.IsNullOrWhiteSpace(customDateIncoming)
@@ -1424,6 +1471,10 @@ namespace Pages
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
+
+            // На всякий случай перед выгрузкой ещё раз подтягиваем прайс-лист и применяем все правила маппинга
+            // (по коду, артикулу и наименованию), чтобы Product был проставлен для всех строк.
+            await EnsureMappingsForCurrentDocumentAsync().ConfigureAwait(true);
 
             if (_currentItems.Any(it => string.IsNullOrWhiteSpace(it.Product)))
             {
