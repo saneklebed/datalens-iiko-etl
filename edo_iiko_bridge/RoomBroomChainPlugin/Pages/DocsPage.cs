@@ -1285,6 +1285,7 @@ namespace Pages
                 it.IikoProductArticle = null;
                 it.Unit = null;
                 it.ContainerId = null;
+                it.ContainerCount = null;
                 it.AmountUnitId = null;
 
                 var code = (it.ItemVendorCode ?? "").Trim();
@@ -1311,6 +1312,8 @@ namespace Pages
                         it.Unit = mapped.ContainerName;
                     if (!string.IsNullOrWhiteSpace(mapped.ContainerId))
                         it.ContainerId = mapped.ContainerId;
+                    if (mapped.ContainerCount.HasValue)
+                        it.ContainerCount = mapped.ContainerCount.Value;
                     if (!string.IsNullOrWhiteSpace(mapped.AmountUnitId))
                         it.AmountUnitId = mapped.AmountUnitId;
                 }
@@ -1325,6 +1328,7 @@ namespace Pages
                               + " mappedArticle=\"" + (it.IikoProductArticle ?? "<null>") + "\""
                               + " mappedName=\"" + (it.IikoProductName ?? "<null>") + "\""
                               + " containerId=" + (it.ContainerId ?? "<null>")
+                              + " containerCount=" + (it.ContainerCount.HasValue ? it.ContainerCount.Value.ToString(CultureInfo.InvariantCulture) : "<null>")
                               + " amountUnitId=" + (it.AmountUnitId ?? "<null>")
                               + " containerName=\"" + (it.Unit ?? "<null>") + "\"";
                 IikoRestoClient.WriteImportDebugLog(logLine);
@@ -1505,6 +1509,27 @@ namespace Pages
             return decimal.Round(item.Vat * 100m / subtotalWithoutVat, 3, MidpointRounding.AwayFromZero);
         }
 
+        private static bool ShouldUseContainerQuantity(UtdItemRow item)
+        {
+            if (item == null || !item.ContainerCount.HasValue || item.ContainerCount.Value <= 0m)
+                return false;
+
+            var unitName = (item.UnitName ?? "").Trim().ToLowerInvariant();
+            if (unitName == "шт" || unitName == "штука" || unitName == "штук" ||
+                unitName.StartsWith("уп") || unitName.StartsWith("кор") ||
+                unitName.StartsWith("ящ") || unitName.StartsWith("бут") ||
+                unitName.StartsWith("бан") || unitName.StartsWith("вед") ||
+                unitName.StartsWith("кан"))
+                return true;
+
+            var containerName = (item.Unit ?? "").Trim().ToLowerInvariant();
+            if (containerName.StartsWith("шт по") || containerName.StartsWith("уп ") ||
+                containerName.StartsWith("уп.") || containerName.Contains(" по "))
+                return true;
+
+            return false;
+        }
+
         /// <summary>
         /// Строит XML приходной накладной для iiko. Использует только уже вычисленные привязки (it.Product),
         /// без повторного поиска по прайс-листу — источник истины: EnsureMappingsForCurrentDocumentAsync.
@@ -1535,7 +1560,13 @@ namespace Pages
                 var itemEl = new XElement("item");
                 itemsEl.Add(itemEl);
 
-                itemEl.Add(new XElement("amount", it.Quantity.ToString(CultureInfo.InvariantCulture)));
+                var useContainerQuantity = ShouldUseContainerQuantity(it);
+                var actualAmount = it.Quantity;
+                if (useContainerQuantity)
+                    actualAmount = decimal.Round(it.Quantity * it.ContainerCount.Value, 3, MidpointRounding.AwayFromZero);
+                var amountInContainer = useContainerQuantity ? actualAmount : it.Quantity;
+
+                itemEl.Add(new XElement("amount", amountInContainer.ToString(CultureInfo.InvariantCulture)));
 
                 var vendorCode = (it.ItemVendorCode ?? "").Trim();
                 var article = (it.ItemArticle ?? "").Trim();
@@ -1561,7 +1592,10 @@ namespace Pages
 
                 if (!string.IsNullOrWhiteSpace(it.ContainerId))
                     itemEl.Add(new XElement("containerId", it.ContainerId));
-                if (!string.IsNullOrWhiteSpace(it.AmountUnitId))
+                // Для фасовок вида "шт по 4,1 кг" amount должно оставаться в штуках.
+                // Если отправить amountUnit, iiko начинает трактовать amount как базовую единицу
+                // (кг/л) и в колонке "В таре" появляются дроби вроде 1,463 вместо 6.
+                if (!useContainerQuantity && !string.IsNullOrWhiteSpace(it.AmountUnitId))
                     itemEl.Add(new XElement("amountUnit", it.AmountUnitId));
 
                 if (!string.IsNullOrWhiteSpace(storeId))
@@ -1573,7 +1607,7 @@ namespace Pages
                 if (vatPercent.HasValue)
                     itemEl.Add(new XElement("vatPercent", vatPercent.Value.ToString(CultureInfo.InvariantCulture)));
                 itemEl.Add(new XElement("vatSum", it.Vat.ToString(CultureInfo.InvariantCulture)));
-                itemEl.Add(new XElement("actualAmount", it.Quantity.ToString(CultureInfo.InvariantCulture)));
+                itemEl.Add(new XElement("actualAmount", actualAmount.ToString(CultureInfo.InvariantCulture)));
 
                 var logLine = "BuildIncomingInvoiceXml.Item: doc=" + (doc.DocumentNumber ?? "<no-number>")
                               + " line=" + it.LineIndex
@@ -1583,8 +1617,10 @@ namespace Pages
                               + " productGuid=" + (nativeProductGuid ?? "<null>")
                               + " productArticle=\"" + (it.IikoProductArticle ?? "<null>") + "\""
                               + " containerId=" + (it.ContainerId ?? "<null>")
-                              + " amountUnitId=" + (it.AmountUnitId ?? "<null>")
-                              + " qty=" + it.Quantity.ToString(CultureInfo.InvariantCulture)
+                              + " containerCount=" + (it.ContainerCount.HasValue ? it.ContainerCount.Value.ToString(CultureInfo.InvariantCulture) : "<null>")
+                              + " amountUnitId=" + (!useContainerQuantity ? (it.AmountUnitId ?? "<null>") : "<skipped>")
+                              + " amount=" + amountInContainer.ToString(CultureInfo.InvariantCulture)
+                              + " actualAmount=" + actualAmount.ToString(CultureInfo.InvariantCulture)
                               + " price=" + it.Price.ToString(CultureInfo.InvariantCulture)
                               + " sum=" + it.Subtotal.ToString(CultureInfo.InvariantCulture)
                               + " vat=" + it.Vat.ToString(CultureInfo.InvariantCulture)

@@ -644,19 +644,19 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\Orange\\.nuget\\packages\\": {}
+    "C:\\Users\\sanek\\.nuget\\packages\\": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\Orange\\Documents\\GitHub\\datalens-iiko-etl\\edo_iiko_bridge\\RoomBroomChainPlugin\\RoomBroomChainPlugin.csproj",
+      "projectUniqueName": "C:\\Users\\sanek\\Desktop\\prog\\datalens-iiko-etl-master\\datalens-iiko-etl\\edo_iiko_bridge\\RoomBroomChainPlugin\\RoomBroomChainPlugin.csproj",
       "projectName": "RoomBroomChainPlugin",
-      "projectPath": "C:\\Users\\Orange\\Documents\\GitHub\\datalens-iiko-etl\\edo_iiko_bridge\\RoomBroomChainPlugin\\RoomBroomChainPlugin.csproj",
-      "packagesPath": "C:\\Users\\Orange\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\Orange\\Documents\\GitHub\\datalens-iiko-etl\\edo_iiko_bridge\\RoomBroomChainPlugin\\obj\\",
+      "projectPath": "C:\\Users\\sanek\\Desktop\\prog\\datalens-iiko-etl-master\\datalens-iiko-etl\\edo_iiko_bridge\\RoomBroomChainPlugin\\RoomBroomChainPlugin.csproj",
+      "packagesPath": "C:\\Users\\sanek\\.nuget\\packages\\",
+      "outputPath": "C:\\Users\\sanek\\Desktop\\prog\\datalens-iiko-etl-master\\datalens-iiko-etl\\edo_iiko_bridge\\RoomBroomChainPlugin\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "C:\\Users\\Orange\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        "C:\\Users\\sanek\\AppData\\Roaming\\NuGet\\NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net48"
@@ -679,7 +679,8 @@
         "enableAudit": "true",
         "auditLevel": "low",
         "auditMode": "direct"
-      }
+      },
+      "SdkAnalysisLevel": "10.0.100"
     },
     "frameworks": {
       "net48": {
@@ -706,7 +707,7 @@
             "version": "[3.3.2, )"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.418\\RuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.103\\RuntimeIdentifierGraph.json"
       }
     }
   }

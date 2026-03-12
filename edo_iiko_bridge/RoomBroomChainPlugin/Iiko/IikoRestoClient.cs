@@ -35,6 +35,7 @@ namespace RoomBroomChainPlugin.Iiko
         public string ContainerName { get; set; }       // наименование фасовки (container/name)
         public string ContainerId { get; set; }         // guid фасовки (container/id или containerId)
         public string AmountUnitId { get; set; }        // guid базовой единицы измерения
+        public decimal? ContainerCount { get; set; }    // количество базовых единиц в фасовке
     }
 
     public class DocumentValidationResult
@@ -602,6 +603,13 @@ namespace RoomBroomChainPlugin.Iiko
                     var containerName = containerEl != null
                         ? ((string)containerEl.Element("name") ?? (string)containerEl.Element("Name"))
                         : null;
+                    decimal? containerCount = null;
+                    if (containerEl != null)
+                    {
+                        var countRaw = (string)containerEl.Element("count") ?? (string)containerEl.Element("Count");
+                        if (decimal.TryParse(countRaw, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsedCount))
+                            containerCount = parsedCount;
+                    }
                     var containerId = (string)el.Element("containerId") ?? (string)el.Element("ContainerId");
                     if (string.IsNullOrWhiteSpace(containerId) && containerEl != null)
                         containerId = (string)containerEl.Element("id") ?? (string)containerEl.Element("Id");
@@ -622,7 +630,8 @@ namespace RoomBroomChainPlugin.Iiko
                         SupplierProductCode = supplierProductCode ?? "",
                         ContainerName = containerName ?? "",
                         ContainerId = containerId ?? "",
-                        AmountUnitId = amountUnitId ?? ""
+                        AmountUnitId = amountUnitId ?? "",
+                        ContainerCount = containerCount
                     });
                 }
                 IikoLog.Write("GetSupplierPricelistAsync: loaded " + result.Count + " items for supplier " + supplierIdOrCode);
