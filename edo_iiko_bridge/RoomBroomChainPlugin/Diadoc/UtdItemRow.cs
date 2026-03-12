@@ -17,6 +17,8 @@ namespace RoomBroomChainPlugin.Diadoc
         public decimal Price { get; set; }
         public decimal Subtotal { get; set; }
         public decimal Vat { get; set; }
+        /// <summary>Ставка НДС из исходного УПД, если она явно указана в XML.</summary>
+        public decimal? VatPercent { get; set; }
         public string ItemVendorCode { get; set; }
         public string ItemArticle { get; set; }
         public string Gtin { get; set; }

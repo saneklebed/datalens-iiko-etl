@@ -1228,6 +1228,19 @@ namespace RoomBroomChainPlugin.Diadoc
                 // Источники ItemVendorCode/ItemArticle для маппинга с прайс-листом iiko:
                 // - UTD Table/Item: ItemVendorCode=Item@ItemVendorCode, ItemArticle=Item@ItemArticle (могут различаться).
                 // - ФНС 5.02/5.03: оба из ДопСведТов@КодТов (различие теряется).
+                decimal? ParseVatPercent(string raw)
+                {
+                    if (string.IsNullOrWhiteSpace(raw))
+                        return null;
+                    raw = raw.Trim();
+                    if (raw.IndexOf("без", StringComparison.OrdinalIgnoreCase) >= 0)
+                        return 0m;
+                    raw = raw.Replace("%", "").Replace(",", ".").Trim();
+                    if (decimal.TryParse(raw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var percent))
+                        return percent;
+                    return null;
+                }
+
                 // Вариант 1: UniversalTransferDocument (Table/Item)
                 System.Xml.Linq.XElement table = null;
                 foreach (var el in root.Descendants())
@@ -1271,6 +1284,9 @@ namespace RoomBroomChainPlugin.Diadoc
                             Price = GetDecimalAttr("Price"),
                             Subtotal = GetDecimalAttr("Subtotal"),
                             Vat = GetDecimalAttr("Vat"),
+                            VatPercent = ParseVatPercent((string)item.Attribute("VatRate")
+                                ?? (string)item.Attribute("TaxRate")
+                                ?? (string)item.Attribute("VatPercent")),
                             ItemVendorCode = (string)item.Attribute("ItemVendorCode") ?? "",
                             ItemArticle = (string)item.Attribute("ItemArticle") ?? "",
                             Gtin = (string)item.Attribute("Gtin") ?? "",
@@ -1340,6 +1356,7 @@ namespace RoomBroomChainPlugin.Diadoc
                             Price = GetDecimalAttrFromAttr("ЦенаТов"),
                             Subtotal = GetDecimalAttrFromAttr("СтТовУчНал"),
                             Vat = GetDecimalFromChild("СумНал"),
+                            VatPercent = ParseVatPercent((string)item.Attribute("НалСт")),
                             ItemVendorCode = (string)(dop?.Attribute("КодТов")) ?? "",
                             ItemArticle = (string)(dop?.Attribute("КодТов")) ?? "",
                             Gtin = "",

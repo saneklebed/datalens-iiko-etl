@@ -1055,6 +1055,12 @@ namespace Pages
                 if (_detailsView.Columns["Price"] != null) { _detailsView.Columns["Price"].Caption = "Цена"; _detailsView.Columns["Price"].VisibleIndex = col++; }
                 if (_detailsView.Columns["Subtotal"] != null) { _detailsView.Columns["Subtotal"].Caption = "Сумма"; _detailsView.Columns["Subtotal"].VisibleIndex = col++; }
                 if (_detailsView.Columns["Vat"] != null) { _detailsView.Columns["Vat"].Caption = "Сумма НДС"; _detailsView.Columns["Vat"].VisibleIndex = col++; }
+                if (_detailsView.Columns["VatPercent"] != null)
+                {
+                    _detailsView.Columns["VatPercent"].Caption = "Ставка, %";
+                    _detailsView.Columns["VatPercent"].VisibleIndex = col++;
+                    _detailsView.Columns["VatPercent"].Width = 58;
+                }
 
                 // Подсветка незамапленных строк и блокировка кнопок выгрузки.
                 _detailsView.RowCellStyle -= DetailsView_RowCellStyle;
@@ -1380,6 +1386,8 @@ namespace Pages
         {
             if (item == null)
                 return null;
+            if (item.VatPercent.HasValue)
+                return item.VatPercent.Value;
             if (item.Subtotal <= 0m || item.Vat < 0m)
                 return null;
             if (item.Vat == 0m)
