@@ -44,6 +44,11 @@ namespace Pages
         private LabelControl _lblBatchHint;
         private ComboBoxEdit _batchStoreCombo;
         private LabelControl _lblBatchStore;
+        private PanelControl _busyOverlay;
+        private PanelControl _busyCard;
+        private LabelControl _busyLabel;
+        private MarqueeProgressBarControl _busyProgress;
+        private int _busyOverlayDepth;
 
         private PanelControl _detailsPanel;
         private LabelControl _detailsHeader;
@@ -67,6 +72,7 @@ namespace Pages
         private IikoRestoClient _iikoClient;
         private List<DiadocOrg> _orgs = new List<DiadocOrg>();
         private List<CounteragentRow> _counteragents;
+        private List<DiadocDocumentRow> _incomingDocuments;
         private List<IikoSupplier> _suppliers;
         private List<IikoStore> _stores;
         private const string ModeCounteragents = "Поставщики";
@@ -311,13 +317,7 @@ namespace Pages
             _btnBack.Appearance.Font = new Font("Segoe UI", 9.25f, FontStyle.Bold);
             _btnBack.Appearance.ForeColor = Color.SteelBlue;
             _btnBack.Appearance.BackColor = Color.AliceBlue;
-            _btnBack.Click += (s, e) =>
-            {
-                if (_currentDocument != null)
-                    _currentDocument.AllItemsMapped = _currentAllItemsMapped;
-                SetMode(ModeIncoming);
-                RefreshIncomingDocumentsAsync();
-            };
+            _btnBack.Click += async (s, e) => await ReturnToIncomingDocumentsAsync();
 
             _detailsHeader = new LabelControl
             {
@@ -601,6 +601,45 @@ namespace Pages
             Controls.Add(_buttonsPanel);
             Controls.Add(topPanel);
 
+            _busyOverlay = new PanelControl
+            {
+                Dock = DockStyle.Fill,
+                Visible = false,
+                BorderStyle = BorderStyles.NoBorder,
+                BackColor = Color.FromArgb(245, 245, 245)
+            };
+            _busyCard = new PanelControl
+            {
+                Size = new Size(360, 108),
+                BorderStyle = BorderStyles.Simple,
+                BackColor = Color.White
+            };
+            _busyLabel = new LabelControl
+            {
+                AutoSizeMode = LabelAutoSizeMode.Vertical,
+                Text = "Загрузка...",
+                Location = new Point(24, 18),
+                Size = new Size(312, 38),
+                Appearance =
+                {
+                    Font = new Font("Segoe UI", 10f, FontStyle.Bold),
+                    TextOptions = { HAlignment = HorzAlignment.Center, VAlignment = VertAlignment.Center }
+                }
+            };
+            _busyProgress = new MarqueeProgressBarControl
+            {
+                Size = new Size(312, 18),
+                Location = new Point(24, 68),
+                EditValue = 0
+            };
+            _busyProgress.Properties.MarqueeAnimationSpeed = 30;
+            _busyCard.Controls.Add(_busyLabel);
+            _busyCard.Controls.Add(_busyProgress);
+            _busyOverlay.Controls.Add(_busyCard);
+            _busyOverlay.Resize += (s, e) => CenterBusyCard();
+            Controls.Add(_busyOverlay);
+            CenterBusyCard();
+
             _currentMode = ModeCounteragents;
             RefreshOrgListAsync();
         }
@@ -623,7 +662,7 @@ namespace Pages
 
             if (mode == ModeIncoming)
             {
-                _grid.DataSource = new List<DiadocDocumentRow>();
+                _grid.DataSource = _incomingDocuments ?? new List<DiadocDocumentRow>();
                 ApplyDocumentsColumns();
             }
             else if (mode != ModeIncomingDetails)
@@ -632,9 +671,75 @@ namespace Pages
             }
         }
 
+        private void CenterBusyCard()
+        {
+            if (_busyOverlay == null || _busyCard == null)
+                return;
+
+            var x = Math.Max(0, (_busyOverlay.ClientSize.Width - _busyCard.Width) / 2);
+            var y = Math.Max(0, (_busyOverlay.ClientSize.Height - _busyCard.Height) / 2);
+            _busyCard.Location = new Point(x, y);
+        }
+
+        private void ShowBusyOverlay(string message)
+        {
+            _busyOverlayDepth++;
+            if (_busyOverlay == null)
+                return;
+
+            _busyLabel.Text = string.IsNullOrWhiteSpace(message) ? "Загрузка..." : message;
+            CenterBusyCard();
+            _busyOverlay.Visible = true;
+            _busyOverlay.BringToFront();
+            UseWaitCursor = true;
+
+            // Принудительно даём WinForms отрисовать overlay до тяжёлой перерисовки экрана,
+            // иначе пользователь успевает увидеть промежуточный "пустой" кадр.
+            _busyOverlay.Refresh();
+            _busyCard.Refresh();
+            Refresh();
+            Application.DoEvents();
+        }
+
+        private void UpdateBusyOverlay(string message)
+        {
+            if (_busyOverlay == null || !_busyOverlay.Visible || string.IsNullOrWhiteSpace(message))
+                return;
+
+            _busyLabel.Text = message;
+            CenterBusyCard();
+        }
+
+        private void HideBusyOverlay()
+        {
+            if (_busyOverlayDepth > 0)
+                _busyOverlayDepth--;
+
+            if (_busyOverlayDepth > 0 || _busyOverlay == null)
+                return;
+
+            _busyOverlay.Visible = false;
+            UseWaitCursor = false;
+        }
+
+        private async Task RunWithBusyOverlayAsync(string message, Func<Task> action)
+        {
+            ShowBusyOverlay(message);
+            await Task.Yield();
+            try
+            {
+                await action().ConfigureAwait(true);
+            }
+            finally
+            {
+                HideBusyOverlay();
+            }
+        }
+
         private void OnSelectionChanged()
         {
             _counteragents = null;
+            _incomingDocuments = null;
             _suppliers = null;
             _stores = null;
             RefreshCurrentViewAsync();
@@ -1891,7 +1996,65 @@ namespace Pages
             return false;
         }
 
+        private void RestoreIncomingDocumentsView()
+        {
+            if (_grid == null)
+            {
+                RefreshIncomingDocumentsAsync();
+                return;
+            }
+
+            if (_incomingDocuments == null)
+            {
+                RefreshIncomingDocumentsAsync();
+                return;
+            }
+
+            _grid.DataSource = _incomingDocuments;
+            if (_gridView != null)
+                _gridView.BeginDataUpdate();
+            try
+            {
+                if (_gridView != null)
+                    _gridView.RefreshData();
+                ApplyDocumentsColumns();
+                RefreshBatchPanelState();
+            }
+            finally
+            {
+                if (_gridView != null)
+                    _gridView.EndDataUpdate();
+            }
+        }
+
+        private async Task ReturnToIncomingDocumentsAsync()
+        {
+            await RunWithBusyOverlayAsync("Возвращаемся к накладным...", async () =>
+            {
+                if (_currentDocument != null)
+                    _currentDocument.AllItemsMapped = _currentAllItemsMapped;
+
+                SuspendLayout();
+                try
+                {
+                    SetMode(ModeIncoming);
+                    RestoreIncomingDocumentsView();
+                }
+                finally
+                {
+                    ResumeLayout(true);
+                }
+
+                await Task.CompletedTask;
+            }).ConfigureAwait(true);
+        }
+
         private async void RefreshIncomingDocumentsAsync()
+        {
+            await RunWithBusyOverlayAsync("Получаем накладные...", RefreshIncomingDocumentsCoreAsync).ConfigureAwait(true);
+        }
+
+        private async Task RefreshIncomingDocumentsCoreAsync()
         {
             if (_client == null) return;
             var boxId = GetSelectedBoxId();
@@ -2028,9 +2191,12 @@ namespace Pages
                     }
                 }
 
+                UpdateBusyOverlay("Проверяем привязки и проставляем галочки...");
+
                 // Пересчёт привязок по прайс-листу до отображения грида — галочки и крестики сразу.
                 await UpdateAllItemsMappedStatusAsync(boxId, list).ConfigureAwait(true);
 
+                _incomingDocuments = list;
                 _grid.DataSource = list;
                 ApplyDocumentsColumns();
                 RefreshBatchPanelState();
@@ -2192,6 +2358,7 @@ namespace Pages
                         await _client.GetDocumentsAsync(boxId, true, from, to, ca).ConfigureAwait(false)
                     ).ConfigureAwait(true) ?? new List<DiadocDocumentRow>();
                     await MarkSuppliersAsync(list).ConfigureAwait(true);
+                    _incomingDocuments = list;
                     _grid.DataSource = list;
                     ApplyDocumentsColumns();
                 }
