@@ -1577,12 +1577,15 @@ namespace Pages
                 if (!string.IsNullOrWhiteSpace(nativeProductGuid))
                     itemEl.Add(new XElement("product", nativeProductGuid));
 
-                // Во все доступные поля кладём артикул и наименование поставщика,
-                // чтобы максимум информации из ЭДО доехало до iiko.
+                // Наш артикул в iiko безопасно отправлять всегда: он описывает уже найденный native product.
                 if (!string.IsNullOrWhiteSpace(it.IikoProductArticle))
                     itemEl.Add(new XElement("productArticle", it.IikoProductArticle));
 
-                if (!string.IsNullOrWhiteSpace(vendorCode))
+                // Код/артикул поставщика отправляем только когда не удалось однозначно проставить product GUID.
+                // Иначе iiko может начать повторно искать позицию по supplier article и наткнуться на дубли
+                // в чужих/старых прайс-листах, хотя нужный товар уже найден по GUID.
+                var shouldSendSupplierArticle = string.IsNullOrWhiteSpace(nativeProductGuid);
+                if (shouldSendSupplierArticle && !string.IsNullOrWhiteSpace(vendorCode))
                 {
                     itemEl.Add(new XElement("supplierProductArticle", vendorCode));
                     itemEl.Add(new XElement("code", vendorCode));
@@ -1616,6 +1619,7 @@ namespace Pages
                               + " article=\"" + article + "\""
                               + " productGuid=" + (nativeProductGuid ?? "<null>")
                               + " productArticle=\"" + (it.IikoProductArticle ?? "<null>") + "\""
+                              + " sendSupplierArticle=" + shouldSendSupplierArticle
                               + " containerId=" + (it.ContainerId ?? "<null>")
                               + " containerCount=" + (it.ContainerCount.HasValue ? it.ContainerCount.Value.ToString(CultureInfo.InvariantCulture) : "<null>")
                               + " amountUnitId=" + (!useContainerQuantity ? (it.AmountUnitId ?? "<null>") : "<skipped>")
@@ -1757,6 +1761,13 @@ namespace Pages
                     {
                         msg = "В прайс-листе поставщика в iiko не найдено сопоставление «товар поставщика → наш товар» для одной из строк.\r\n" +
                               "Откройте в iiko прайс-лист поставщика и заполните колонку «Наш товар» для этой позиции (или удалите лишнюю строку), затем повторите выгрузку.\r\n\r\n" +
+                              "Ответ iiko: " + body;
+                    }
+                    else if (body.IndexOf("One entity expected for article=", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        msg = "iiko нашёл несколько сущностей по одному и тому же артикулу поставщика.\r\n" +
+                              "Плагин уже передаёт supplier документа и product GUID, но в прайс-листе поставщика всё ещё могут быть дубли одной позиции.\r\n" +
+                              "Проверьте у этого поставщика строки с одинаковым артикулом и удалите/объедините дубликаты, затем повторите выгрузку.\r\n\r\n" +
                               "Ответ iiko: " + body;
                     }
                     else
