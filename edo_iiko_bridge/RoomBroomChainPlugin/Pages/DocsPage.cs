@@ -1263,19 +1263,11 @@ namespace Pages
                 return;
             }
 
-            var codeToProduct = new Dictionary<string, SupplierPricelistItem>(StringComparer.OrdinalIgnoreCase);
-            foreach (var row in pricelist)
-            {
-                if (string.IsNullOrWhiteSpace(row.NativeProduct))
-                    continue;
-                if (!string.IsNullOrWhiteSpace(row.SupplierProductNum))
-                    codeToProduct[row.SupplierProductNum.Trim()] = row;
-                if (!string.IsNullOrWhiteSpace(row.SupplierProductCode))
-                    codeToProduct[row.SupplierProductCode.Trim()] = row;
-            }
+            var codeToProduct = BuildPricelistCodeMap(pricelist, out var ambiguousCodes);
 
             IikoRestoClient.WriteImportDebugLog("EnsureMappings: doc=" + docNumber + " items=" + _currentItems.Length
-                                               + " pricelistByCode=" + codeToProduct.Count);
+                                               + " pricelistByCode=" + codeToProduct.Count
+                                               + " ambiguousCodes=" + ambiguousCodes.Count);
 
             foreach (var it in _currentItems)
             {
@@ -1298,7 +1290,11 @@ namespace Pages
                 // Поиск привязки жёстко ограничиваем только артикулом у поставщика.
                 // Это позволяет использовать его как уникальный ключ и избегать
                 // неожиданных совпадений по наименованию.
-                if (!string.IsNullOrEmpty(code) && codeToProduct.TryGetValue(code, out mapped))
+                if (!string.IsNullOrEmpty(code) && ambiguousCodes.Contains(code))
+                {
+                    mappingSource = "duplicateVendorCode";
+                }
+                else if (!string.IsNullOrEmpty(code) && codeToProduct.TryGetValue(code, out mapped))
                 {
                     mappingSource = "vendorCode";
                 }
@@ -1337,7 +1333,10 @@ namespace Pages
             // Для незамапленных строк отображаем плейсхолдер "[выберите]".
             foreach (var it in _currentItems)
             {
-                if (string.IsNullOrWhiteSpace(it.Product))
+                var code = (it.ItemVendorCode ?? "").Trim();
+                if (!string.IsNullOrWhiteSpace(code) && ambiguousCodes.Contains(code))
+                    it.IikoProductName = "Дубль кода в прайс-листе поставщика";
+                else if (string.IsNullOrWhiteSpace(it.Product))
                     it.IikoProductName = "Отсутствует в прайс-листе";
             }
 
@@ -1489,6 +1488,48 @@ namespace Pages
             if (DateTime.TryParse(date, out var dt))
                 return dt.ToString("dd.MM.yyyy");
             return date;
+        }
+
+        private static Dictionary<string, SupplierPricelistItem> BuildPricelistCodeMap(
+            IEnumerable<SupplierPricelistItem> pricelist,
+            out HashSet<string> ambiguousCodes)
+        {
+            var codeToProduct = new Dictionary<string, SupplierPricelistItem>(StringComparer.OrdinalIgnoreCase);
+            var ambiguous = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            void AddCode(string rawCode, SupplierPricelistItem row)
+            {
+                var code = (rawCode ?? "").Trim();
+                if (string.IsNullOrWhiteSpace(code) || ambiguous.Contains(code))
+                    return;
+
+                if (codeToProduct.TryGetValue(code, out var existing))
+                {
+                    var sameNativeProduct =
+                        string.Equals(existing.NativeProduct ?? "", row.NativeProduct ?? "", StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(existing.NativeProductNum ?? "", row.NativeProductNum ?? "", StringComparison.OrdinalIgnoreCase);
+
+                    if (!sameNativeProduct)
+                    {
+                        codeToProduct.Remove(code);
+                        ambiguous.Add(code);
+                    }
+                    return;
+                }
+
+                codeToProduct[code] = row;
+            }
+
+            foreach (var row in pricelist ?? Enumerable.Empty<SupplierPricelistItem>())
+            {
+                if (row == null || string.IsNullOrWhiteSpace(row.NativeProduct))
+                    continue;
+                AddCode(row.SupplierProductNum, row);
+                AddCode(row.SupplierProductCode, row);
+            }
+
+            ambiguousCodes = ambiguous;
+            return codeToProduct;
         }
 
         private static decimal? TryCalculateVatPercent(UtdItemRow item)
@@ -1759,8 +1800,9 @@ namespace Pages
                     }
                     else if (body.IndexOf("Native product for supplier product", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
-                        msg = "В прайс-листе поставщика в iiko не найдено сопоставление «товар поставщика → наш товар» для одной из строк.\r\n" +
-                              "Откройте в iiko прайс-лист поставщика и заполните колонку «Наш товар» для этой позиции (или удалите лишнюю строку), затем повторите выгрузку.\r\n\r\n" +
+                        msg = "iiko не смог однозначно сопоставить одну или несколько строк с прайс-листом текущего поставщика.\r\n" +
+                              "Обычно это означает, что в прайс-листе есть незаполненная привязка «товар поставщика → наш товар» или дубли по коду поставщика.\r\n" +
+                              "Проверьте прайс-лист именно этого поставщика в iiko и повторите выгрузку.\r\n\r\n" +
                               "Ответ iiko: " + body;
                     }
                     else if (body.IndexOf("One entity expected for article=", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -2319,23 +2361,14 @@ namespace Pages
                         continue;
                     }
 
-                    var codeToProduct = new Dictionary<string, SupplierPricelistItem>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var row in pricelist)
-                    {
-                        if (string.IsNullOrWhiteSpace(row.NativeProduct))
-                            continue;
-                        if (!string.IsNullOrWhiteSpace(row.SupplierProductNum))
-                            codeToProduct[row.SupplierProductNum.Trim()] = row;
-                        if (!string.IsNullOrWhiteSpace(row.SupplierProductCode))
-                            codeToProduct[row.SupplierProductCode.Trim()] = row;
-                    }
+                    var codeToProduct = BuildPricelistCodeMap(pricelist, out var ambiguousCodes);
 
                     // Те же правила, что и в EnsureMappingsForCurrentDocumentAsync: только по vendorCode.
                     var allMapped = true;
                     foreach (var it in items)
                     {
                         var code = (it.ItemVendorCode ?? "").Trim();
-                        if (string.IsNullOrEmpty(code) || !codeToProduct.TryGetValue(code, out _))
+                        if (string.IsNullOrEmpty(code) || ambiguousCodes.Contains(code) || !codeToProduct.TryGetValue(code, out _))
                         {
                             allMapped = false;
                             break;
