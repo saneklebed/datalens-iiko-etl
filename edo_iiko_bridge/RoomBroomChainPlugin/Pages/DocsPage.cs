@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -1188,7 +1189,7 @@ namespace Pages
             }
             catch (Exception ex)
             {
-                XtraMessageBox.Show(ex.Message, "Детали накладной", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                XtraMessageBox.Show(ex.Message + "\r\n\r\n" + BuildSupportLogHint(), "Детали накладной", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
@@ -1249,17 +1250,11 @@ namespace Pages
                 return;
 
             var docNumber = _currentDocument.DocumentNumber ?? "<no-number>";
-
-            var supplierPricelistKey = _currentDocument.IikoSupplierId;
-            var sup = _suppliers?.FirstOrDefault(s => s.Id == _currentDocument.IikoSupplierId);
-            if (sup != null && !string.IsNullOrWhiteSpace(sup.Code))
-                supplierPricelistKey = sup.Code;
-
             var pricelistDate = NormalizeDateForIikoDocument(_currentDocument.DocumentDate);
-            var pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierPricelistKey, pricelistDate).ConfigureAwait(true);
+            var pricelist = await LoadSupplierPricelistAsync(_currentDocument.IikoSupplierId, pricelistDate, docNumber).ConfigureAwait(true);
             if (pricelist == null || pricelist.Count == 0)
             {
-                IikoRestoClient.WriteImportDebugLog("EnsureMappings: doc=" + docNumber + " supplierKey=" + supplierPricelistKey + " -> Прайс-лист пустой или не получен.");
+                IikoRestoClient.WriteImportDebugLog("EnsureMappings: doc=" + docNumber + " supplierId=" + _currentDocument.IikoSupplierId + " -> Прайс-лист пустой или не получен.");
                 return;
             }
 
@@ -1488,6 +1483,53 @@ namespace Pages
             if (DateTime.TryParse(date, out var dt))
                 return dt.ToString("dd.MM.yyyy");
             return date;
+        }
+
+        private static string BuildSupportLogHint(bool includeDiadoc = true)
+        {
+            var iikoLog = IikoRestoClient.GetImportDebugLogPath();
+            var iikoXmlDir = Path.Combine(IikoRestoClient.GetImportDebugDirectory(), "xml");
+            var msg = "Если ошибка повторится, пришлите лог:\r\n" +
+                      iikoLog + "\r\n" +
+                      "И, если есть, XML из папки:\r\n" +
+                      iikoXmlDir;
+
+            if (includeDiadoc)
+            {
+                msg += "\r\n\r\nЛог Диадока:\r\n" + DiadocApiClient.GetDebugLogPath();
+            }
+
+            return msg;
+        }
+
+        private async Task<List<SupplierPricelistItem>> LoadSupplierPricelistAsync(string supplierId, string pricelistDate, string docNumberForLog)
+        {
+            if (string.IsNullOrWhiteSpace(supplierId) || _iikoClient == null)
+                return new List<SupplierPricelistItem>();
+
+            var supplierIdTrimmed = supplierId.Trim();
+            var pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierIdTrimmed, pricelistDate).ConfigureAwait(true);
+            if (pricelist != null && pricelist.Count > 0)
+            {
+                IikoRestoClient.WriteImportDebugLog("LoadSupplierPricelist: doc=" + (docNumberForLog ?? "<no-number>")
+                                                   + " supplierKey=" + supplierIdTrimmed + " keyType=id count=" + pricelist.Count);
+                return pricelist;
+            }
+
+            var sup = _suppliers?.FirstOrDefault(s => string.Equals(s.Id, supplierIdTrimmed, StringComparison.OrdinalIgnoreCase));
+            var supplierCode = (sup?.Code ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(supplierCode) &&
+                !string.Equals(supplierCode, supplierIdTrimmed, StringComparison.OrdinalIgnoreCase))
+            {
+                pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierCode, pricelistDate).ConfigureAwait(true);
+                IikoRestoClient.WriteImportDebugLog("LoadSupplierPricelist: doc=" + (docNumberForLog ?? "<no-number>")
+                                                   + " supplierKey=" + supplierCode + " keyType=code count=" + ((pricelist != null) ? pricelist.Count : 0));
+                return pricelist ?? new List<SupplierPricelistItem>();
+            }
+
+            IikoRestoClient.WriteImportDebugLog("LoadSupplierPricelist: doc=" + (docNumberForLog ?? "<no-number>")
+                                               + " supplierKey=" + supplierIdTrimmed + " keyType=id count=0");
+            return pricelist ?? new List<SupplierPricelistItem>();
         }
 
         private static Dictionary<string, SupplierPricelistItem> BuildPricelistCodeMap(
@@ -1821,11 +1863,11 @@ namespace Pages
                 {
                     msg = "Ошибка iiko (HTTP " + ie.StatusCode + "):\r\n" + (body != "" ? body : ie.Message);
                 }
-                XtraMessageBox.Show(msg, "Выгрузка в iiko", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                XtraMessageBox.Show(msg + "\r\n\r\n" + BuildSupportLogHint(includeDiadoc: false), "Выгрузка в iiko", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             catch (Exception ex)
             {
-                XtraMessageBox.Show(ex.Message, "Выгрузка в iiko", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                XtraMessageBox.Show(ex.Message + "\r\n\r\n" + BuildSupportLogHint(includeDiadoc: false), "Выгрузка в iiko", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -2343,16 +2385,11 @@ namespace Pages
                         continue;
                     }
 
-                    var supplierPricelistKey = doc.IikoSupplierId;
-                    var sup = _suppliers?.FirstOrDefault(s => s.Id == doc.IikoSupplierId);
-                    if (sup != null && !string.IsNullOrWhiteSpace(sup.Code))
-                        supplierPricelistKey = sup.Code;
-
                     var docDate = NormalizeDateForIikoDocument(doc.DocumentDate);
-                    var cacheKey = (supplierPricelistKey ?? "") + "|" + (docDate ?? "");
+                    var cacheKey = (doc.IikoSupplierId ?? "") + "|" + (docDate ?? "");
                     if (!pricelistCache.TryGetValue(cacheKey, out var pricelist))
                     {
-                        pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierPricelistKey, docDate).ConfigureAwait(true);
+                        pricelist = await LoadSupplierPricelistAsync(doc.IikoSupplierId, docDate, doc.DocumentNumber ?? "<no-number>").ConfigureAwait(true);
                         pricelistCache[cacheKey] = pricelist ?? new List<SupplierPricelistItem>();
                     }
                     if (pricelist == null || pricelist.Count == 0)

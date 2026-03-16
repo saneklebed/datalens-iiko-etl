@@ -128,14 +128,14 @@ namespace RoomBroomChainPlugin.Diadoc
                 if (string.IsNullOrEmpty(dir))
                     dir = Path.Combine(
                         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                        "RoomBroomChainPlugin");
+                        "iiko-dev-plugin-logs");
                 Directory.CreateDirectory(dir);
                 return Path.Combine(dir, "diadoc_debug.log");
             }
             catch
             {
                 // Фолбэк — временная папка.
-                var fallbackDir = Path.Combine(Path.GetTempPath(), "RoomBroomChainPlugin");
+                var fallbackDir = Path.Combine(Path.GetTempPath(), "iiko-dev-plugin-logs");
                 try { Directory.CreateDirectory(fallbackDir); } catch { }
                 return Path.Combine(fallbackDir, "diadoc_debug.log");
             }
@@ -147,7 +147,7 @@ namespace RoomBroomChainPlugin.Diadoc
             {
                 var dir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
                 if (string.IsNullOrEmpty(dir)) dir = Path.GetTempPath();
-                var folder = Path.Combine(dir, "RoomBroomChainPlugin");
+                var folder = Path.Combine(dir, "iiko-dev-plugin-logs");
                 Directory.CreateDirectory(folder);
                 var file = Path.Combine(folder, "diadoc_last_request.txt");
                 File.WriteAllText(file,
@@ -342,6 +342,11 @@ namespace RoomBroomChainPlugin.Diadoc
             {
                 // Лог не должен ломать работу плагина.
             }
+        }
+
+        public static string GetDebugLogPath()
+        {
+            return DebugLogPath;
         }
 
         #endregion
