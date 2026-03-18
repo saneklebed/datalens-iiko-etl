@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -1201,7 +1202,7 @@ namespace Pages
             }
             catch (Exception ex)
             {
-                XtraMessageBox.Show(ex.Message, "Детали накладной", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                XtraMessageBox.Show(ex.Message + "\r\n\r\n" + BuildSupportLogHint(), "Детали накладной", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
@@ -1262,33 +1263,19 @@ namespace Pages
                 return;
 
             var docNumber = _currentDocument.DocumentNumber ?? "<no-number>";
-
-            var supplierPricelistKey = _currentDocument.IikoSupplierId;
-            var sup = _suppliers?.FirstOrDefault(s => s.Id == _currentDocument.IikoSupplierId);
-            if (sup != null && !string.IsNullOrWhiteSpace(sup.Code))
-                supplierPricelistKey = sup.Code;
-
             var pricelistDate = NormalizeDateForIikoDocument(_currentDocument.DocumentDate);
-            var pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierPricelistKey, pricelistDate).ConfigureAwait(true);
+            var pricelist = await LoadSupplierPricelistAsync(_currentDocument.IikoSupplierId, pricelistDate, docNumber).ConfigureAwait(true);
             if (pricelist == null || pricelist.Count == 0)
             {
-                IikoRestoClient.WriteImportDebugLog("EnsureMappings: doc=" + docNumber + " supplierKey=" + supplierPricelistKey + " -> Прайс-лист пустой или не получен.");
+                IikoRestoClient.WriteImportDebugLog("EnsureMappings: doc=" + docNumber + " supplierId=" + _currentDocument.IikoSupplierId + " -> Прайс-лист пустой или не получен.");
                 return;
             }
 
-            var codeToProduct = new Dictionary<string, SupplierPricelistItem>(StringComparer.OrdinalIgnoreCase);
-            foreach (var row in pricelist)
-            {
-                if (string.IsNullOrWhiteSpace(row.NativeProduct))
-                    continue;
-                if (!string.IsNullOrWhiteSpace(row.SupplierProductNum))
-                    codeToProduct[row.SupplierProductNum.Trim()] = row;
-                if (!string.IsNullOrWhiteSpace(row.SupplierProductCode))
-                    codeToProduct[row.SupplierProductCode.Trim()] = row;
-            }
+            var codeToProduct = BuildPricelistCodeMap(pricelist, out var ambiguousCodes);
 
             IikoRestoClient.WriteImportDebugLog("EnsureMappings: doc=" + docNumber + " items=" + _currentItems.Length
-                                               + " pricelistByCode=" + codeToProduct.Count);
+                                               + " pricelistByCode=" + codeToProduct.Count
+                                               + " ambiguousCodes=" + ambiguousCodes.Count);
 
             foreach (var it in _currentItems)
             {
@@ -1298,6 +1285,7 @@ namespace Pages
                 it.IikoProductArticle = null;
                 it.Unit = null;
                 it.ContainerId = null;
+                it.ContainerCount = null;
                 it.AmountUnitId = null;
 
                 var code = (it.ItemVendorCode ?? "").Trim();
@@ -1310,7 +1298,11 @@ namespace Pages
                 // Поиск привязки жёстко ограничиваем только артикулом у поставщика.
                 // Это позволяет использовать его как уникальный ключ и избегать
                 // неожиданных совпадений по наименованию.
-                if (!string.IsNullOrEmpty(code) && codeToProduct.TryGetValue(code, out mapped))
+                if (!string.IsNullOrEmpty(code) && ambiguousCodes.Contains(code))
+                {
+                    mappingSource = "duplicateVendorCode";
+                }
+                else if (!string.IsNullOrEmpty(code) && codeToProduct.TryGetValue(code, out mapped))
                 {
                     mappingSource = "vendorCode";
                 }
@@ -1324,6 +1316,8 @@ namespace Pages
                         it.Unit = mapped.ContainerName;
                     if (!string.IsNullOrWhiteSpace(mapped.ContainerId))
                         it.ContainerId = mapped.ContainerId;
+                    if (mapped.ContainerCount.HasValue)
+                        it.ContainerCount = mapped.ContainerCount.Value;
                     if (!string.IsNullOrWhiteSpace(mapped.AmountUnitId))
                         it.AmountUnitId = mapped.AmountUnitId;
                 }
@@ -1338,6 +1332,7 @@ namespace Pages
                               + " mappedArticle=\"" + (it.IikoProductArticle ?? "<null>") + "\""
                               + " mappedName=\"" + (it.IikoProductName ?? "<null>") + "\""
                               + " containerId=" + (it.ContainerId ?? "<null>")
+                              + " containerCount=" + (it.ContainerCount.HasValue ? it.ContainerCount.Value.ToString(CultureInfo.InvariantCulture) : "<null>")
                               + " amountUnitId=" + (it.AmountUnitId ?? "<null>")
                               + " containerName=\"" + (it.Unit ?? "<null>") + "\"";
                 IikoRestoClient.WriteImportDebugLog(logLine);
@@ -1346,7 +1341,10 @@ namespace Pages
             // Для незамапленных строк отображаем плейсхолдер "[выберите]".
             foreach (var it in _currentItems)
             {
-                if (string.IsNullOrWhiteSpace(it.Product))
+                var code = (it.ItemVendorCode ?? "").Trim();
+                if (!string.IsNullOrWhiteSpace(code) && ambiguousCodes.Contains(code))
+                    it.IikoProductName = "Дубль кода в прайс-листе поставщика";
+                else if (string.IsNullOrWhiteSpace(it.Product))
                     it.IikoProductName = "Отсутствует в прайс-листе";
             }
 
@@ -1500,6 +1498,95 @@ namespace Pages
             return date;
         }
 
+        private static string BuildSupportLogHint(bool includeDiadoc = true)
+        {
+            var iikoLog = IikoRestoClient.GetImportDebugLogPath();
+            var iikoXmlDir = Path.Combine(IikoRestoClient.GetImportDebugDirectory(), "xml");
+            var msg = "Если ошибка повторится, пришлите лог:\r\n" +
+                      iikoLog + "\r\n" +
+                      "И, если есть, XML из папки:\r\n" +
+                      iikoXmlDir;
+
+            if (includeDiadoc)
+            {
+                msg += "\r\n\r\nЛог Диадока:\r\n" + DiadocApiClient.GetDebugLogPath();
+            }
+
+            return msg;
+        }
+
+        private async Task<List<SupplierPricelistItem>> LoadSupplierPricelistAsync(string supplierId, string pricelistDate, string docNumberForLog)
+        {
+            if (string.IsNullOrWhiteSpace(supplierId) || _iikoClient == null)
+                return new List<SupplierPricelistItem>();
+
+            var supplierIdTrimmed = supplierId.Trim();
+            var pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierIdTrimmed, pricelistDate).ConfigureAwait(true);
+            if (pricelist != null && pricelist.Count > 0)
+            {
+                IikoRestoClient.WriteImportDebugLog("LoadSupplierPricelist: doc=" + (docNumberForLog ?? "<no-number>")
+                                                   + " supplierKey=" + supplierIdTrimmed + " keyType=id count=" + pricelist.Count);
+                return pricelist;
+            }
+
+            var sup = _suppliers?.FirstOrDefault(s => string.Equals(s.Id, supplierIdTrimmed, StringComparison.OrdinalIgnoreCase));
+            var supplierCode = (sup?.Code ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(supplierCode) &&
+                !string.Equals(supplierCode, supplierIdTrimmed, StringComparison.OrdinalIgnoreCase))
+            {
+                pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierCode, pricelistDate).ConfigureAwait(true);
+                IikoRestoClient.WriteImportDebugLog("LoadSupplierPricelist: doc=" + (docNumberForLog ?? "<no-number>")
+                                                   + " supplierKey=" + supplierCode + " keyType=code count=" + ((pricelist != null) ? pricelist.Count : 0));
+                return pricelist ?? new List<SupplierPricelistItem>();
+            }
+
+            IikoRestoClient.WriteImportDebugLog("LoadSupplierPricelist: doc=" + (docNumberForLog ?? "<no-number>")
+                                               + " supplierKey=" + supplierIdTrimmed + " keyType=id count=0");
+            return pricelist ?? new List<SupplierPricelistItem>();
+        }
+
+        private static Dictionary<string, SupplierPricelistItem> BuildPricelistCodeMap(
+            IEnumerable<SupplierPricelistItem> pricelist,
+            out HashSet<string> ambiguousCodes)
+        {
+            var codeToProduct = new Dictionary<string, SupplierPricelistItem>(StringComparer.OrdinalIgnoreCase);
+            var ambiguous = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            void AddCode(string rawCode, SupplierPricelistItem row)
+            {
+                var code = (rawCode ?? "").Trim();
+                if (string.IsNullOrWhiteSpace(code) || ambiguous.Contains(code))
+                    return;
+
+                if (codeToProduct.TryGetValue(code, out var existing))
+                {
+                    var sameNativeProduct =
+                        string.Equals(existing.NativeProduct ?? "", row.NativeProduct ?? "", StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(existing.NativeProductNum ?? "", row.NativeProductNum ?? "", StringComparison.OrdinalIgnoreCase);
+
+                    if (!sameNativeProduct)
+                    {
+                        codeToProduct.Remove(code);
+                        ambiguous.Add(code);
+                    }
+                    return;
+                }
+
+                codeToProduct[code] = row;
+            }
+
+            foreach (var row in pricelist ?? Enumerable.Empty<SupplierPricelistItem>())
+            {
+                if (row == null || string.IsNullOrWhiteSpace(row.NativeProduct))
+                    continue;
+                AddCode(row.SupplierProductNum, row);
+                AddCode(row.SupplierProductCode, row);
+            }
+
+            ambiguousCodes = ambiguous;
+            return codeToProduct;
+        }
+
         private static decimal? TryCalculateVatPercent(UtdItemRow item)
         {
             if (item == null)
@@ -1516,6 +1603,27 @@ namespace Pages
                 return null;
 
             return decimal.Round(item.Vat * 100m / subtotalWithoutVat, 3, MidpointRounding.AwayFromZero);
+        }
+
+        private static bool ShouldUseContainerQuantity(UtdItemRow item)
+        {
+            if (item == null || !item.ContainerCount.HasValue || item.ContainerCount.Value <= 0m)
+                return false;
+
+            var unitName = (item.UnitName ?? "").Trim().ToLowerInvariant();
+            if (unitName == "шт" || unitName == "штука" || unitName == "штук" ||
+                unitName.StartsWith("уп") || unitName.StartsWith("кор") ||
+                unitName.StartsWith("ящ") || unitName.StartsWith("бут") ||
+                unitName.StartsWith("бан") || unitName.StartsWith("вед") ||
+                unitName.StartsWith("кан"))
+                return true;
+
+            var containerName = (item.Unit ?? "").Trim().ToLowerInvariant();
+            if (containerName.StartsWith("шт по") || containerName.StartsWith("уп ") ||
+                containerName.StartsWith("уп.") || containerName.Contains(" по "))
+                return true;
+
+            return false;
         }
 
         /// <summary>
@@ -1548,7 +1656,13 @@ namespace Pages
                 var itemEl = new XElement("item");
                 itemsEl.Add(itemEl);
 
-                itemEl.Add(new XElement("amount", it.Quantity.ToString(CultureInfo.InvariantCulture)));
+                var useContainerQuantity = ShouldUseContainerQuantity(it);
+                var actualAmount = it.Quantity;
+                if (useContainerQuantity)
+                    actualAmount = decimal.Round(it.Quantity * it.ContainerCount.Value, 3, MidpointRounding.AwayFromZero);
+                var amountInContainer = useContainerQuantity ? actualAmount : it.Quantity;
+
+                itemEl.Add(new XElement("amount", amountInContainer.ToString(CultureInfo.InvariantCulture)));
 
                 var vendorCode = (it.ItemVendorCode ?? "").Trim();
                 var article = (it.ItemArticle ?? "").Trim();
@@ -1559,12 +1673,15 @@ namespace Pages
                 if (!string.IsNullOrWhiteSpace(nativeProductGuid))
                     itemEl.Add(new XElement("product", nativeProductGuid));
 
-                // Во все доступные поля кладём артикул и наименование поставщика,
-                // чтобы максимум информации из ЭДО доехало до iiko.
+                // Наш артикул в iiko безопасно отправлять всегда: он описывает уже найденный native product.
                 if (!string.IsNullOrWhiteSpace(it.IikoProductArticle))
                     itemEl.Add(new XElement("productArticle", it.IikoProductArticle));
 
-                if (!string.IsNullOrWhiteSpace(vendorCode))
+                // Код/артикул поставщика отправляем только когда не удалось однозначно проставить product GUID.
+                // Иначе iiko может начать повторно искать позицию по supplier article и наткнуться на дубли
+                // в чужих/старых прайс-листах, хотя нужный товар уже найден по GUID.
+                var shouldSendSupplierArticle = string.IsNullOrWhiteSpace(nativeProductGuid);
+                if (shouldSendSupplierArticle && !string.IsNullOrWhiteSpace(vendorCode))
                 {
                     itemEl.Add(new XElement("supplierProductArticle", vendorCode));
                     itemEl.Add(new XElement("code", vendorCode));
@@ -1574,7 +1691,10 @@ namespace Pages
 
                 if (!string.IsNullOrWhiteSpace(it.ContainerId))
                     itemEl.Add(new XElement("containerId", it.ContainerId));
-                if (!string.IsNullOrWhiteSpace(it.AmountUnitId))
+                // Для фасовок вида "шт по 4,1 кг" amount должно оставаться в штуках.
+                // Если отправить amountUnit, iiko начинает трактовать amount как базовую единицу
+                // (кг/л) и в колонке "В таре" появляются дроби вроде 1,463 вместо 6.
+                if (!useContainerQuantity && !string.IsNullOrWhiteSpace(it.AmountUnitId))
                     itemEl.Add(new XElement("amountUnit", it.AmountUnitId));
 
                 if (!string.IsNullOrWhiteSpace(storeId))
@@ -1586,7 +1706,7 @@ namespace Pages
                 if (vatPercent.HasValue)
                     itemEl.Add(new XElement("vatPercent", vatPercent.Value.ToString(CultureInfo.InvariantCulture)));
                 itemEl.Add(new XElement("vatSum", it.Vat.ToString(CultureInfo.InvariantCulture)));
-                itemEl.Add(new XElement("actualAmount", it.Quantity.ToString(CultureInfo.InvariantCulture)));
+                itemEl.Add(new XElement("actualAmount", actualAmount.ToString(CultureInfo.InvariantCulture)));
 
                 var logLine = "BuildIncomingInvoiceXml.Item: doc=" + (doc.DocumentNumber ?? "<no-number>")
                               + " line=" + it.LineIndex
@@ -1595,9 +1715,12 @@ namespace Pages
                               + " article=\"" + article + "\""
                               + " productGuid=" + (nativeProductGuid ?? "<null>")
                               + " productArticle=\"" + (it.IikoProductArticle ?? "<null>") + "\""
+                              + " sendSupplierArticle=" + shouldSendSupplierArticle
                               + " containerId=" + (it.ContainerId ?? "<null>")
-                              + " amountUnitId=" + (it.AmountUnitId ?? "<null>")
-                              + " qty=" + it.Quantity.ToString(CultureInfo.InvariantCulture)
+                              + " containerCount=" + (it.ContainerCount.HasValue ? it.ContainerCount.Value.ToString(CultureInfo.InvariantCulture) : "<null>")
+                              + " amountUnitId=" + (!useContainerQuantity ? (it.AmountUnitId ?? "<null>") : "<skipped>")
+                              + " amount=" + amountInContainer.ToString(CultureInfo.InvariantCulture)
+                              + " actualAmount=" + actualAmount.ToString(CultureInfo.InvariantCulture)
                               + " price=" + it.Price.ToString(CultureInfo.InvariantCulture)
                               + " sum=" + it.Subtotal.ToString(CultureInfo.InvariantCulture)
                               + " vat=" + it.Vat.ToString(CultureInfo.InvariantCulture)
@@ -1739,8 +1862,16 @@ namespace Pages
                     }
                     else if (body.IndexOf("Native product for supplier product", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
-                        msg = "В прайс-листе поставщика в iiko не найдено сопоставление «товар поставщика → наш товар» для одной из строк.\r\n" +
-                              "Откройте в iiko прайс-лист поставщика и заполните колонку «Наш товар» для этой позиции (или удалите лишнюю строку), затем повторите выгрузку.\r\n\r\n" +
+                        msg = "iiko не смог однозначно сопоставить одну или несколько строк с прайс-листом текущего поставщика.\r\n" +
+                              "Обычно это означает, что в прайс-листе есть незаполненная привязка «товар поставщика → наш товар» или дубли по коду поставщика.\r\n" +
+                              "Проверьте прайс-лист именно этого поставщика в iiko и повторите выгрузку.\r\n\r\n" +
+                              "Ответ iiko: " + body;
+                    }
+                    else if (body.IndexOf("One entity expected for article=", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        msg = "iiko нашёл несколько сущностей по одному и тому же артикулу поставщика.\r\n" +
+                              "Плагин уже передаёт supplier документа и product GUID, но в прайс-листе поставщика всё ещё могут быть дубли одной позиции.\r\n" +
+                              "Проверьте у этого поставщика строки с одинаковым артикулом и удалите/объедините дубликаты, затем повторите выгрузку.\r\n\r\n" +
                               "Ответ iiko: " + body;
                     }
                     else
@@ -1752,11 +1883,11 @@ namespace Pages
                 {
                     msg = "Ошибка iiko (HTTP " + ie.StatusCode + "):\r\n" + (body != "" ? body : ie.Message);
                 }
-                XtraMessageBox.Show(msg, "Выгрузка в iiko", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                XtraMessageBox.Show(msg + "\r\n\r\n" + BuildSupportLogHint(includeDiadoc: false), "Выгрузка в iiko", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             catch (Exception ex)
             {
-                XtraMessageBox.Show(ex.Message, "Выгрузка в iiko", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                XtraMessageBox.Show(ex.Message + "\r\n\r\n" + BuildSupportLogHint(includeDiadoc: false), "Выгрузка в iiko", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -2274,16 +2405,11 @@ namespace Pages
                         continue;
                     }
 
-                    var supplierPricelistKey = doc.IikoSupplierId;
-                    var sup = _suppliers?.FirstOrDefault(s => s.Id == doc.IikoSupplierId);
-                    if (sup != null && !string.IsNullOrWhiteSpace(sup.Code))
-                        supplierPricelistKey = sup.Code;
-
                     var docDate = NormalizeDateForIikoDocument(doc.DocumentDate);
-                    var cacheKey = (supplierPricelistKey ?? "") + "|" + (docDate ?? "");
+                    var cacheKey = (doc.IikoSupplierId ?? "") + "|" + (docDate ?? "");
                     if (!pricelistCache.TryGetValue(cacheKey, out var pricelist))
                     {
-                        pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierPricelistKey, docDate).ConfigureAwait(true);
+                        pricelist = await LoadSupplierPricelistAsync(doc.IikoSupplierId, docDate, doc.DocumentNumber ?? "<no-number>").ConfigureAwait(true);
                         pricelistCache[cacheKey] = pricelist ?? new List<SupplierPricelistItem>();
                     }
                     if (pricelist == null || pricelist.Count == 0)
@@ -2292,23 +2418,14 @@ namespace Pages
                         continue;
                     }
 
-                    var codeToProduct = new Dictionary<string, SupplierPricelistItem>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var row in pricelist)
-                    {
-                        if (string.IsNullOrWhiteSpace(row.NativeProduct))
-                            continue;
-                        if (!string.IsNullOrWhiteSpace(row.SupplierProductNum))
-                            codeToProduct[row.SupplierProductNum.Trim()] = row;
-                        if (!string.IsNullOrWhiteSpace(row.SupplierProductCode))
-                            codeToProduct[row.SupplierProductCode.Trim()] = row;
-                    }
+                    var codeToProduct = BuildPricelistCodeMap(pricelist, out var ambiguousCodes);
 
                     // Те же правила, что и в EnsureMappingsForCurrentDocumentAsync: только по vendorCode.
                     var allMapped = true;
                     foreach (var it in items)
                     {
                         var code = (it.ItemVendorCode ?? "").Trim();
-                        if (string.IsNullOrEmpty(code) || !codeToProduct.TryGetValue(code, out _))
+                        if (string.IsNullOrEmpty(code) || ambiguousCodes.Contains(code) || !codeToProduct.TryGetValue(code, out _))
                         {
                             allMapped = false;
                             break;

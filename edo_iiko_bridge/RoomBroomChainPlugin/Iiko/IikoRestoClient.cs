@@ -35,6 +35,7 @@ namespace RoomBroomChainPlugin.Iiko
         public string ContainerName { get; set; }       // наименование фасовки (container/name)
         public string ContainerId { get; set; }         // guid фасовки (container/id или containerId)
         public string AmountUnitId { get; set; }        // guid базовой единицы измерения
+        public decimal? ContainerCount { get; set; }    // количество базовых единиц в фасовке
     }
 
     public class DocumentValidationResult
@@ -87,9 +88,7 @@ namespace RoomBroomChainPlugin.Iiko
     {
         private string _key;
         private static IikoConfig _config;
-        // Временный лог для диагностики импорта накладных в iiko на dev-машине.
-        private const string ImportDebugLogPath =
-            @"C:\Users\Orange\Documents\GitHub\datalens-iiko-etl\edo_iiko_bridge\dist\iiko_import_debug.log";
+        private static readonly string ImportDebugLogPath = InitImportDebugLogPath();
 
         private static string GetEnv(string name)
         {
@@ -99,6 +98,37 @@ namespace RoomBroomChainPlugin.Iiko
         private static void SafeDebugLog(string message)
         {
             WriteImportDebugLog(message);
+        }
+
+        private static string InitImportDebugLogPath()
+        {
+            try
+            {
+                // Пишем лог рядом с DLL плагина, чтобы его было легко найти на рабочей машине.
+                var asmLocation = typeof(IikoRestoClient).Assembly.Location;
+                var dir = Path.GetDirectoryName(asmLocation);
+                if (string.IsNullOrEmpty(dir))
+                    dir = AppDomain.CurrentDomain.BaseDirectory;
+                if (string.IsNullOrEmpty(dir))
+                {
+                    dir = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "iiko-dev-plugin-logs");
+                }
+                Directory.CreateDirectory(dir);
+                return Path.Combine(dir, "iiko_import_debug.log");
+            }
+            catch
+            {
+                var fallbackDir = Path.Combine(Path.GetTempPath(), "iiko-dev-plugin-logs");
+                try { Directory.CreateDirectory(fallbackDir); } catch { }
+                return Path.Combine(fallbackDir, "iiko_import_debug.log");
+            }
+        }
+
+        public static string GetImportDebugLogPath()
+        {
+            return ImportDebugLogPath;
         }
 
         public static string GetImportDebugDirectory()
@@ -602,6 +632,13 @@ namespace RoomBroomChainPlugin.Iiko
                     var containerName = containerEl != null
                         ? ((string)containerEl.Element("name") ?? (string)containerEl.Element("Name"))
                         : null;
+                    decimal? containerCount = null;
+                    if (containerEl != null)
+                    {
+                        var countRaw = (string)containerEl.Element("count") ?? (string)containerEl.Element("Count");
+                        if (decimal.TryParse(countRaw, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsedCount))
+                            containerCount = parsedCount;
+                    }
                     var containerId = (string)el.Element("containerId") ?? (string)el.Element("ContainerId");
                     if (string.IsNullOrWhiteSpace(containerId) && containerEl != null)
                         containerId = (string)containerEl.Element("id") ?? (string)containerEl.Element("Id");
@@ -622,7 +659,8 @@ namespace RoomBroomChainPlugin.Iiko
                         SupplierProductCode = supplierProductCode ?? "",
                         ContainerName = containerName ?? "",
                         ContainerId = containerId ?? "",
-                        AmountUnitId = amountUnitId ?? ""
+                        AmountUnitId = amountUnitId ?? "",
+                        ContainerCount = containerCount
                     });
                 }
                 IikoLog.Write("GetSupplierPricelistAsync: loaded " + result.Count + " items for supplier " + supplierIdOrCode);

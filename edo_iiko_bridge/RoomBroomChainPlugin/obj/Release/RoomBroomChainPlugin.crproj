@@ -24,7 +24,7 @@
   </rule>
   <module path="RoomBroomChainPlugin.dll" />
   <probePath>C:\Program Files\iiko\iikoChain\Office</probePath>
-  <probePath>C:\Users\Orange\.nuget\packages\dnlib\3.3.2\lib\net45</probePath>
-  <probePath>C:\Users\Orange\.nuget\packages\microsoft.netframework.referenceassemblies.net48\1.0.3\build\.NETFramework\v4.8</probePath>
-  <probePath>C:\Users\Orange\.nuget\packages\newtonsoft.json\13.0.3\lib\net45</probePath>
+  <probePath>C:\Users\sanek\.nuget\packages\dnlib\3.3.2\lib\net45</probePath>
+  <probePath>C:\Users\sanek\.nuget\packages\microsoft.netframework.referenceassemblies.net48\1.0.3\build\.NETFramework\v4.8</probePath>
+  <probePath>C:\Users\sanek\.nuget\packages\newtonsoft.json\13.0.3\lib\net45</probePath>
 </project>

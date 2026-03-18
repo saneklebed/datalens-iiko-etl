@@ -128,14 +128,14 @@ namespace RoomBroomChainPlugin.Diadoc
                 if (string.IsNullOrEmpty(dir))
                     dir = Path.Combine(
                         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                        "RoomBroomChainPlugin");
+                        "iiko-dev-plugin-logs");
                 Directory.CreateDirectory(dir);
                 return Path.Combine(dir, "diadoc_debug.log");
             }
             catch
             {
                 // Фолбэк — временная папка.
-                var fallbackDir = Path.Combine(Path.GetTempPath(), "RoomBroomChainPlugin");
+                var fallbackDir = Path.Combine(Path.GetTempPath(), "iiko-dev-plugin-logs");
                 try { Directory.CreateDirectory(fallbackDir); } catch { }
                 return Path.Combine(fallbackDir, "diadoc_debug.log");
             }
@@ -147,7 +147,7 @@ namespace RoomBroomChainPlugin.Diadoc
             {
                 var dir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
                 if (string.IsNullOrEmpty(dir)) dir = Path.GetTempPath();
-                var folder = Path.Combine(dir, "RoomBroomChainPlugin");
+                var folder = Path.Combine(dir, "iiko-dev-plugin-logs");
                 Directory.CreateDirectory(folder);
                 var file = Path.Combine(folder, "diadoc_last_request.txt");
                 File.WriteAllText(file,
@@ -169,7 +169,8 @@ namespace RoomBroomChainPlugin.Diadoc
             string pathAndQuery,
             string authHeaderValue,
             byte[] body = null,
-            string bodyContentType = null)
+            string bodyContentType = null,
+            bool retryOnUnauthorized = true)
         {
             var url = BuildUrl(pathAndQuery);
             LogRequest(method, url);
@@ -207,6 +208,17 @@ namespace RoomBroomChainPlugin.Diadoc
             }
             catch (WebException we)
             {
+                var httpResp = we.Response as HttpWebResponse;
+                if (retryOnUnauthorized &&
+                    httpResp != null &&
+                    httpResp.StatusCode == HttpStatusCode.Unauthorized &&
+                    !string.IsNullOrWhiteSpace(_token) &&
+                    pathAndQuery.IndexOf("Authenticate", StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    SafeDebugLog("PerformRequestAsync: 401 received, refreshing Diadoc token and retrying " + pathAndQuery);
+                    _token = null;
+                    return await PerformRequestAsync(method, pathAndQuery, AuthHeader(), body, bodyContentType, false).ConfigureAwait(false);
+                }
                 throw WrapWebException(we, pathAndQuery);
             }
         }
@@ -220,7 +232,8 @@ namespace RoomBroomChainPlugin.Diadoc
             string pathAndQuery,
             string authHeaderValue,
             byte[] body = null,
-            string bodyContentType = null)
+            string bodyContentType = null,
+            bool retryOnUnauthorized = true)
         {
             var url = BuildUrl(pathAndQuery);
             LogRequest(method, url);
@@ -258,6 +271,17 @@ namespace RoomBroomChainPlugin.Diadoc
             }
             catch (WebException we)
             {
+                var httpResp = we.Response as HttpWebResponse;
+                if (retryOnUnauthorized &&
+                    httpResp != null &&
+                    httpResp.StatusCode == HttpStatusCode.Unauthorized &&
+                    !string.IsNullOrWhiteSpace(_token) &&
+                    pathAndQuery.IndexOf("Authenticate", StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    SafeDebugLog("PerformRequestBytesAsync: 401 received, refreshing Diadoc token and retrying " + pathAndQuery);
+                    _token = null;
+                    return await PerformRequestBytesAsync(method, pathAndQuery, AuthHeader(), body, bodyContentType, false).ConfigureAwait(false);
+                }
                 throw WrapWebException(we, pathAndQuery);
             }
         }
@@ -318,6 +342,11 @@ namespace RoomBroomChainPlugin.Diadoc
             {
                 // Лог не должен ломать работу плагина.
             }
+        }
+
+        public static string GetDebugLogPath()
+        {
+            return DebugLogPath;
         }
 
         #endregion
@@ -1156,45 +1185,59 @@ namespace RoomBroomChainPlugin.Diadoc
             var url = BuildUrl(pq.ToString());
             LogRequest("GET", url);
 
-            var request = (HttpWebRequest)WebRequest.Create(url);
-            request.Method = "GET";
-            request.AllowAutoRedirect = true;
-            request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
-            request.Timeout = 60000;
-            var authHeaderValue = AuthHeader();
-            if (!string.IsNullOrEmpty(authHeaderValue))
-                request.Headers.Add("Authorization", authHeaderValue);
-
-            string xml;
-            try
+            async Task<string> LoadXmlAsync(string authHeaderValue, bool retryOnUnauthorized)
             {
-                using (var response = (HttpWebResponse)await request.GetResponseAsync().ConfigureAwait(false))
-                using (var stream = response.GetResponseStream())
+                var request = (HttpWebRequest)WebRequest.Create(url);
+                request.Method = "GET";
+                request.AllowAutoRedirect = true;
+                request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
+                request.Timeout = 60000;
+                if (!string.IsNullOrEmpty(authHeaderValue))
+                    request.Headers.Add("Authorization", authHeaderValue);
+
+                try
                 {
-                    // Читаем как байты, чтобы корректно обработать windows-1251 и прочие кодировки.
-                    using (var ms = new MemoryStream())
+                    using (var response = (HttpWebResponse)await request.GetResponseAsync().ConfigureAwait(false))
+                    using (var stream = response.GetResponseStream())
                     {
-                        if (stream != null)
-                            await stream.CopyToAsync(ms).ConfigureAwait(false);
-                        var bytes = ms.ToArray();
-                        // По умолчанию пробуем UTF-8.
-                        xml = Encoding.UTF8.GetString(bytes);
-                        // Если в заголовке XML указана windows-1251 — перекодируем.
-                        var marker1 = "encoding=\"windows-1251\"";
-                        var marker2 = "encoding='windows-1251'";
-                        if ((xml != null && xml.IndexOf(marker1, StringComparison.OrdinalIgnoreCase) >= 0) ||
-                            (xml != null && xml.IndexOf(marker2, StringComparison.OrdinalIgnoreCase) >= 0))
+                        // Читаем как байты, чтобы корректно обработать windows-1251 и прочие кодировки.
+                        using (var ms = new MemoryStream())
                         {
-                            var enc1251 = Encoding.GetEncoding(1251);
-                            xml = enc1251.GetString(bytes);
+                            if (stream != null)
+                                await stream.CopyToAsync(ms).ConfigureAwait(false);
+                            var bytes = ms.ToArray();
+                            // По умолчанию пробуем UTF-8.
+                            var xmlText = Encoding.UTF8.GetString(bytes);
+                            // Если в заголовке XML указана windows-1251 — перекодируем.
+                            var marker1 = "encoding=\"windows-1251\"";
+                            var marker2 = "encoding='windows-1251'";
+                            if ((xmlText != null && xmlText.IndexOf(marker1, StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                (xmlText != null && xmlText.IndexOf(marker2, StringComparison.OrdinalIgnoreCase) >= 0))
+                            {
+                                var enc1251 = Encoding.GetEncoding(1251);
+                                xmlText = enc1251.GetString(bytes);
+                            }
+                            return xmlText;
                         }
                     }
                 }
+                catch (WebException we)
+                {
+                    var httpResp = we.Response as HttpWebResponse;
+                    if (retryOnUnauthorized &&
+                        httpResp != null &&
+                        httpResp.StatusCode == HttpStatusCode.Unauthorized &&
+                        !string.IsNullOrWhiteSpace(_token))
+                    {
+                        SafeDebugLog("GetUtdItemsAsync: 401 received, refreshing Diadoc token and retrying entity content");
+                        _token = null;
+                        return await LoadXmlAsync(AuthHeader(), false).ConfigureAwait(false);
+                    }
+                    throw WrapWebException(we, pq.ToString());
+                }
             }
-            catch (WebException we)
-            {
-                throw WrapWebException(we, pq.ToString());
-            }
+
+            var xml = await LoadXmlAsync(AuthHeader(), true).ConfigureAwait(false);
 
             if (string.IsNullOrWhiteSpace(xml))
                 return Array.Empty<UtdItemRow>();

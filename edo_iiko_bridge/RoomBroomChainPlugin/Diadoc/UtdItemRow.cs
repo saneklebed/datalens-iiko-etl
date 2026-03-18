@@ -14,6 +14,8 @@ namespace RoomBroomChainPlugin.Diadoc
         public string Unit { get; set; }
         public string UnitName { get; set; }
         public decimal Quantity { get; set; }
+        /// <summary>Количество в одной таре/фасовке из прайс-листа iiko.</summary>
+        public decimal? ContainerCount { get; set; }
         public decimal Price { get; set; }
         public decimal Subtotal { get; set; }
         public decimal Vat { get; set; }
