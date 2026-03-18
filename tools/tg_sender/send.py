@@ -2,6 +2,7 @@ import json
 import csv
 import random
 import asyncio
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -82,7 +83,12 @@ async def main():
     input("Нажми Enter, чтобы НАЧАТЬ (или закрой окно, чтобы отменить)...")
 
     log_path = BASE_DIR / "log.csv"
-    client = TelegramClient(session_name, api_id, api_hash)
+    # Сессия всегда в папке скрипта — чтобы удаление session-файла здесь гарантированно сбрасывало авторизацию
+    session_path = BASE_DIR / session_name
+    session_file = Path(str(session_path) + ".session")
+    if not session_file.exists():
+        print("Сессия не найдена. При первом подключении введи номер телефона и код из Telegram.")
+    client = TelegramClient(str(session_path), api_id, api_hash)
 
     async with client:
         me = await client.get_me()
@@ -159,4 +165,11 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        print("ОШИБКА при запуске:", file=sys.stderr)
+        print(type(e).__name__, str(e), file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

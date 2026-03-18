@@ -1137,6 +1137,7 @@ namespace Pages
                 if (_detailsView.Columns["IikoProductArticle"] != null) _detailsView.Columns["IikoProductArticle"].Visible = false;
                 if (_detailsView.Columns["ContainerId"] != null) _detailsView.Columns["ContainerId"].Visible = false;
                 if (_detailsView.Columns["AmountUnitId"] != null) _detailsView.Columns["AmountUnitId"].Visible = false;
+                if (_detailsView.Columns["ContainerCount"] != null) _detailsView.Columns["ContainerCount"].Visible = false;
                 // Артикул дублирует «Код поставщика» — не показываем при провале в накладную
                 if (_detailsView.Columns["ItemArticle"] != null) _detailsView.Columns["ItemArticle"].Visible = false;
 
@@ -1165,6 +1166,18 @@ namespace Pages
                     _detailsView.Columns["VatPercent"].Caption = "Ставка, %";
                     _detailsView.Columns["VatPercent"].VisibleIndex = col++;
                     _detailsView.Columns["VatPercent"].Width = 58;
+                }
+
+                // Скрыть все остальные колонки (в т.ч. Container Count и любые авто-поля)
+                var visibleFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    "LineIndex", "ItemVendorCode", "SupplierProductName", "UnitName", "IikoProductName",
+                    "Unit", "Quantity", "Price", "Subtotal", "Vat", "VatPercent"
+                };
+                foreach (DevExpress.XtraGrid.Columns.GridColumn colDef in _detailsView.Columns)
+                {
+                    if (colDef.Visible && !visibleFields.Contains(colDef.FieldName))
+                        colDef.Visible = false;
                 }
 
                 // Подсветка незамапленных строк и блокировка кнопок выгрузки.
@@ -1699,11 +1712,18 @@ namespace Pages
                     _currentDocument.IikoStatus = createWithPosting
                         ? $"Внесено в iiko с проведением (№ {iikoNumber})"
                         : $"Внесено в iiko без проведения (№ {iikoNumber})";
+                    UpdateUploadButtonsEnabled();
                     RefreshCurrentViewAsync();
                 }
 
                 XtraMessageBox.Show(msg, "Выгрузка в iiko", MessageBoxButtons.OK,
                     valid ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+
+                if (valid)
+                {
+                    SetMode(ModeIncoming);
+                    RestoreIncomingDocumentsView();
+                }
             }
             catch (IikoImportException ie)
             {
