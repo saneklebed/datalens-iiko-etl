@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Xml.Linq;
@@ -1521,7 +1522,17 @@ namespace Pages
                 return new List<SupplierPricelistItem>();
 
             var supplierIdTrimmed = supplierId.Trim();
-            var pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierIdTrimmed, pricelistDate).ConfigureAwait(true);
+            List<SupplierPricelistItem> pricelist = null;
+            try
+            {
+                pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierIdTrimmed, pricelistDate).ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                IikoRestoClient.WriteImportDebugLog("LoadSupplierPricelist: doc=" + (docNumberForLog ?? "<no-number>")
+                                                   + " supplierKey=" + supplierIdTrimmed + " keyType=id error=" + ex.Message);
+                pricelist = new List<SupplierPricelistItem>();
+            }
             if (pricelist != null && pricelist.Count > 0)
             {
                 IikoRestoClient.WriteImportDebugLog("LoadSupplierPricelist: doc=" + (docNumberForLog ?? "<no-number>")
@@ -1534,7 +1545,16 @@ namespace Pages
             if (!string.IsNullOrWhiteSpace(supplierCode) &&
                 !string.Equals(supplierCode, supplierIdTrimmed, StringComparison.OrdinalIgnoreCase))
             {
-                pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierCode, pricelistDate).ConfigureAwait(true);
+                try
+                {
+                    pricelist = await _iikoClient.GetSupplierPricelistAsync(supplierCode, pricelistDate).ConfigureAwait(true);
+                }
+                catch (Exception ex)
+                {
+                    IikoRestoClient.WriteImportDebugLog("LoadSupplierPricelist: doc=" + (docNumberForLog ?? "<no-number>")
+                                                       + " supplierKey=" + supplierCode + " keyType=code error=" + ex.Message);
+                    pricelist = new List<SupplierPricelistItem>();
+                }
                 IikoRestoClient.WriteImportDebugLog("LoadSupplierPricelist: doc=" + (docNumberForLog ?? "<no-number>")
                                                    + " supplierKey=" + supplierCode + " keyType=code count=" + ((pricelist != null) ? pricelist.Count : 0));
                 return pricelist ?? new List<SupplierPricelistItem>();
@@ -1626,6 +1646,93 @@ namespace Pages
             return false;
         }
 
+        private static decimal? InferContainerCount(UtdItemRow item)
+        {
+            if (item == null)
+                return null;
+
+            if (item.ContainerCount.HasValue && item.ContainerCount.Value > 0m)
+                return item.ContainerCount.Value;
+
+            var containerName = (item.Unit ?? "").Trim().ToLowerInvariant();
+            var markerIndex = containerName.IndexOf("по ", StringComparison.Ordinal);
+            if (markerIndex < 0)
+                return null;
+
+            var raw = containerName.Substring(markerIndex + 3).Trim();
+            if (string.IsNullOrWhiteSpace(raw))
+                return null;
+
+            var numberChars = new StringBuilder();
+            foreach (var ch in raw)
+            {
+                if (char.IsDigit(ch) || ch == ',' || ch == '.')
+                {
+                    numberChars.Append(ch);
+                    continue;
+                }
+
+                if (numberChars.Length > 0)
+                    break;
+            }
+
+            if (numberChars.Length == 0)
+                return null;
+
+            var countRaw = numberChars.ToString().Replace(",", ".");
+            if (decimal.TryParse(countRaw, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed) && parsed > 0m)
+                return parsed;
+
+            return null;
+        }
+
+        private static bool IsDuplicateArticleConflict(string body)
+        {
+            return !string.IsNullOrWhiteSpace(body) &&
+                   body.IndexOf("One entity expected for article=", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static string StripArticleLookupFields(string xml)
+        {
+            if (string.IsNullOrWhiteSpace(xml))
+                return xml;
+
+            try
+            {
+                var doc = XDocument.Parse(xml);
+                foreach (var item in doc.Descendants("item"))
+                {
+                    item.Elements("productArticle").Remove();
+                    item.Elements("supplierProductArticle").Remove();
+                    item.Elements("code").Remove();
+                }
+                return doc.ToString(SaveOptions.DisableFormatting);
+            }
+            catch
+            {
+                return xml;
+            }
+        }
+
+        private async Task<DocumentValidationResult> ImportIncomingInvoiceWithRetryAsync(string xml, string docNumberForLog)
+        {
+            try
+            {
+                return await _iikoClient.ImportIncomingInvoiceAsync(xml).ConfigureAwait(true);
+            }
+            catch (IikoImportException ie) when (IsDuplicateArticleConflict(ie.ResponseBody))
+            {
+                var retryXml = StripArticleLookupFields(xml);
+                if (string.Equals(retryXml, xml, StringComparison.Ordinal))
+                    throw;
+
+                IikoRestoClient.WriteImportDebugLog("ImportIncomingInvoiceWithRetry: doc=" + (docNumberForLog ?? "<no-number>")
+                                                   + " retryWithoutArticleFields=true");
+                IikoRestoClient.SaveOutgoingXmlForDebug((docNumberForLog ?? "unknown") + "_retry", retryXml);
+                return await _iikoClient.ImportIncomingInvoiceAsync(retryXml).ConfigureAwait(true);
+            }
+        }
+
         /// <summary>
         /// Строит XML приходной накладной для iiko. Использует только уже вычисленные привязки (it.Product),
         /// без повторного поиска по прайс-листу — источник истины: EnsureMappingsForCurrentDocumentAsync.
@@ -1656,11 +1763,19 @@ namespace Pages
                 var itemEl = new XElement("item");
                 itemsEl.Add(itemEl);
 
-                var useContainerQuantity = ShouldUseContainerQuantity(it);
-                var actualAmount = it.Quantity;
-                if (useContainerQuantity)
-                    actualAmount = decimal.Round(it.Quantity * it.ContainerCount.Value, 3, MidpointRounding.AwayFromZero);
-                var amountInContainer = useContainerQuantity ? actualAmount : it.Quantity;
+                var resolvedContainerCount = InferContainerCount(it);
+                var hasContainerMapping =
+                    !string.IsNullOrWhiteSpace(it.ContainerId) &&
+                    resolvedContainerCount.HasValue &&
+                    resolvedContainerCount.Value > 0m;
+
+                // iiko хранит amount/actualAmount в базовой единице.
+                // Тогда колонка "В таре" сама восстанавливается через фасовку containerId,
+                // а "В ед." и "Фактическое количество" становятся qty * containerCount.
+                var amountInContainer = hasContainerMapping
+                    ? decimal.Round(it.Quantity * resolvedContainerCount.Value, 3, MidpointRounding.AwayFromZero)
+                    : it.Quantity;
+                var actualAmount = amountInContainer;
 
                 itemEl.Add(new XElement("amount", amountInContainer.ToString(CultureInfo.InvariantCulture)));
 
@@ -1673,9 +1788,9 @@ namespace Pages
                 if (!string.IsNullOrWhiteSpace(nativeProductGuid))
                     itemEl.Add(new XElement("product", nativeProductGuid));
 
-                // Наш артикул в iiko безопасно отправлять всегда: он описывает уже найденный native product.
-                if (!string.IsNullOrWhiteSpace(it.IikoProductArticle))
-                    itemEl.Add(new XElement("productArticle", it.IikoProductArticle));
+                // product GUID уже однозначно определяет наш товар.
+                // productArticle дополнительно не отправляем, чтобы iiko не пытался
+                // повторно искать сущность по артикулу и не спотыкался о дубли у других поставщиков.
 
                 // Код/артикул поставщика отправляем только когда не удалось однозначно проставить product GUID.
                 // Иначе iiko может начать повторно искать позицию по supplier article и наткнуться на дубли
@@ -1691,10 +1806,9 @@ namespace Pages
 
                 if (!string.IsNullOrWhiteSpace(it.ContainerId))
                     itemEl.Add(new XElement("containerId", it.ContainerId));
-                // Для фасовок вида "шт по 4,1 кг" amount должно оставаться в штуках.
-                // Если отправить amountUnit, iiko начинает трактовать amount как базовую единицу
-                // (кг/л) и в колонке "В таре" появляются дроби вроде 1,463 вместо 6.
-                if (!useContainerQuantity && !string.IsNullOrWhiteSpace(it.AmountUnitId))
+                // amountUnit нужен, чтобы iiko строил "В ед." и "Фактическое количество"
+                // через фасовку, сохраняя amount как число упаковок из ЭДО.
+                if (!string.IsNullOrWhiteSpace(it.AmountUnitId))
                     itemEl.Add(new XElement("amountUnit", it.AmountUnitId));
 
                 if (!string.IsNullOrWhiteSpace(storeId))
@@ -1717,8 +1831,8 @@ namespace Pages
                               + " productArticle=\"" + (it.IikoProductArticle ?? "<null>") + "\""
                               + " sendSupplierArticle=" + shouldSendSupplierArticle
                               + " containerId=" + (it.ContainerId ?? "<null>")
-                              + " containerCount=" + (it.ContainerCount.HasValue ? it.ContainerCount.Value.ToString(CultureInfo.InvariantCulture) : "<null>")
-                              + " amountUnitId=" + (!useContainerQuantity ? (it.AmountUnitId ?? "<null>") : "<skipped>")
+                              + " containerCount=" + (resolvedContainerCount.HasValue ? resolvedContainerCount.Value.ToString(CultureInfo.InvariantCulture) : "<null>")
+                              + " amountUnitId=" + (it.AmountUnitId ?? "<null>")
                               + " amount=" + amountInContainer.ToString(CultureInfo.InvariantCulture)
                               + " actualAmount=" + actualAmount.ToString(CultureInfo.InvariantCulture)
                               + " price=" + it.Price.ToString(CultureInfo.InvariantCulture)
@@ -1816,7 +1930,7 @@ namespace Pages
                     customDate = dtIncoming.ToString("dd.MM.yyyy");
                 var xml = BuildIncomingInvoiceXml(_currentDocument, _currentItems, _currentDocument.IikoSupplierId, storeId, createWithPosting, customDate);
                 IikoRestoClient.SaveOutgoingXmlForDebug(_currentDocument.DocumentNumber ?? "unknown", xml);
-                var result = await _iikoClient.ImportIncomingInvoiceAsync(xml).ConfigureAwait(true);
+                var result = await ImportIncomingInvoiceWithRetryAsync(xml, _currentDocument.DocumentNumber).ConfigureAwait(true);
 
                 var valid = result.Valid == true;
                 var iikoNumber = result.DocumentNumber ?? _currentDocument.DocumentNumber;
@@ -2133,7 +2247,7 @@ namespace Pages
             {
                 var xml = BuildIncomingInvoiceXml(doc, items, doc.IikoSupplierId, storeId, createWithPosting);
                 IikoRestoClient.SaveOutgoingXmlForDebug(doc.DocumentNumber ?? "unknown", xml);
-                var result = await _iikoClient.ImportIncomingInvoiceAsync(xml).ConfigureAwait(true);
+                var result = await ImportIncomingInvoiceWithRetryAsync(xml, doc.DocumentNumber).ConfigureAwait(true);
                 if (result.Valid == true)
                 {
                     doc.IikoInvoice = result.DocumentNumber ?? doc.DocumentNumber;
