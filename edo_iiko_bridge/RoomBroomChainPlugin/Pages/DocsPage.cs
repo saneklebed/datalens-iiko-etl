@@ -642,7 +642,7 @@ namespace Pages
             Controls.Add(_busyOverlay);
             CenterBusyCard();
 
-            _currentMode = ModeCounteragents;
+            SetMode(ModeIncoming);
             RefreshOrgListAsync();
         }
 
